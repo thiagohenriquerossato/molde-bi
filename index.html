@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Molde Momentos Dashboard Local</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo principal</a>
+
+    <div class="app-shell" data-sidebar-open="false">
+      <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+        <div class="sidebar-header">
+          <div class="brand-mark" aria-hidden="true">MM</div>
+          <div class="brand-copy">
+            <strong>Molde Momentos</strong>
+            <span>Dashboard Local</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <section class="nav-group" aria-labelledby="nav-inicio">
+            <h2 id="nav-inicio">Início</h2>
+            <a class="nav-link" href="#upload" data-route-link="upload" aria-current="page">
+              <span class="nav-icon" aria-hidden="true">U</span>
+              <span class="nav-label">Upload</span>
+            </a>
+          </section>
+
+          <section class="nav-group" aria-labelledby="nav-analises">
+            <h2 id="nav-analises">Análises</h2>
+            <a class="nav-link" href="#executivo" data-route-link="executivo">
+              <span class="nav-icon" aria-hidden="true">E</span>
+              <span class="nav-label">Executivo</span>
+            </a>
+            <a class="nav-link" href="#financeiro" data-route-link="financeiro">
+              <span class="nav-icon" aria-hidden="true">F</span>
+              <span class="nav-label">Financeiro</span>
+            </a>
+            <a class="nav-link" href="#resultado" data-route-link="resultado">
+              <span class="nav-icon" aria-hidden="true">R</span>
+              <span class="nav-label">Resultado</span>
+            </a>
+          </section>
+
+          <section class="nav-group" aria-labelledby="nav-operacao">
+            <h2 id="nav-operacao">Operação</h2>
+            <a class="nav-link" href="#pedidos" data-route-link="pedidos">
+              <span class="nav-icon" aria-hidden="true">P</span>
+              <span class="nav-label">Pedidos</span>
+            </a>
+            <a class="nav-link" href="#insights" data-route-link="insights">
+              <span class="nav-icon" aria-hidden="true">I</span>
+              <span class="nav-label">Insights</span>
+            </a>
+            <a class="nav-link" href="#base-dados" data-route-link="base-dados">
+              <span class="nav-icon" aria-hidden="true">B</span>
+              <span class="nav-label">Base de Dados</span>
+            </a>
+          </section>
+
+          <section class="nav-group" aria-labelledby="nav-sistema">
+            <h2 id="nav-sistema">Sistema</h2>
+            <a class="nav-link" href="#metas" data-route-link="metas">
+              <span class="nav-icon" aria-hidden="true">M</span>
+              <span class="nav-label">Metas</span>
+            </a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="sidebar-backdrop" data-sidebar-close tabindex="-1" aria-hidden="true"></div>
+
+      <div class="app-main">
+        <header class="topbar">
+          <button class="button button-ghost menu-toggle" type="button" data-menu-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menu">
+            <span aria-hidden="true">Menu</span>
+          </button>
+
+          <label class="search-box" aria-label="Busca visual indisponível nesta fase">
+            <span class="sr-only">Buscar páginas, pedidos, contas</span>
+            <span class="search-icon" aria-hidden="true">Busca</span>
+            <input type="search" placeholder="Buscar páginas, pedidos, contas..." disabled>
+          </label>
+
+          <div class="topbar-actions">
+            <span class="badge badge-info">Sem dados importados</span>
+            <button class="button button-outline" type="button" data-theme-toggle aria-label="Alternar tema" aria-pressed="false">Alternar tema</button>
+            <button class="button button-primary" type="button" disabled aria-disabled="true">Selecionar planilha</button>
+          </div>
+        </header>
+
+        <main class="page-area" id="conteudo-principal" tabindex="-1">
+          <section class="page-view" data-route-view>
+            <header class="page-header">
+              <div>
+                <span class="eyebrow">Preparação dos dados</span>
+                <h1>Upload e validação</h1>
+                <p>Carregue as planilhas para preparar os dados do dashboard local.</p>
+              </div>
+              <span class="badge badge-neutral">Ambiente local</span>
+            </header>
+
+            <div class="upload-grid" aria-label="Planilhas esperadas">
+              <article class="upload-card">
+                <div class="card-heading">
+                  <span class="badge badge-neutral">Pendente</span>
+                  <h2>Pedidos</h2>
+                </div>
+                <p class="file-name">Pedidos_Simplificado.xlsx</p>
+                <p>Base de pedidos, clientes, status, datas e valores.</p>
+                <button class="button button-outline" type="button" disabled aria-disabled="true">Selecionar planilha</button>
+                <span class="helper-text">Disponível na Fase 2</span>
+              </article>
+
+              <article class="upload-card">
+                <div class="card-heading">
+                  <span class="badge badge-neutral">Pendente</span>
+                  <h2>Contas a pagar</h2>
+                </div>
+                <p class="file-name">PLANILHA CONTAS A PAGAR1.xlsx</p>
+                <p>Base mensal de contas, fornecedores, vencimentos e pagamentos.</p>
+                <button class="button button-outline" type="button" disabled aria-disabled="true">Selecionar planilha</button>
+                <span class="helper-text">Disponível na Fase 2</span>
+              </article>
+
+              <article class="upload-card">
+                <div class="card-heading">
+                  <span class="badge badge-info">Opcional</span>
+                  <h2>Indicadores e metas</h2>
+                </div>
+                <p class="file-name">Molde_Momentos_Template_Indicadores.xlsx</p>
+                <p>Catálogo opcional de indicadores e metas gerenciais.</p>
+                <button class="button button-outline" type="button" disabled aria-disabled="true">Selecionar planilha</button>
+                <span class="helper-text">Disponível na Fase 2</span>
+              </article>
+            </div>
+
+            <section class="content-grid">
+              <article class="card readiness-card">
+                <span class="badge badge-success">Pronto para abrir</span>
+                <h2>Sistema local e estático</h2>
+                <p>Esta fundação roda direto no navegador, sem backend, login, banco remoto ou dependência de internet em tempo de execução.</p>
+              </article>
+
+              <article class="card">
+                <div class="table-toolbar">
+                  <div>
+                    <h2>Prévia da base normalizada</h2>
+                    <p>As tabelas reais aparecerão após importação, validação e normalização.</p>
+                  </div>
+                  <button class="button button-outline" type="button" disabled aria-disabled="true">Exportar</button>
+                </div>
+
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Origem</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Próxima etapa</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Pedidos</td>
+                        <td><span class="badge badge-neutral">Sem dados</span></td>
+                        <td>Importação na Fase 2</td>
+                      </tr>
+                      <tr>
+                        <td>Contas a pagar</td>
+                        <td><span class="badge badge-neutral">Sem dados</span></td>
+                        <td>Importação na Fase 2</td>
+                      </tr>
+                      <tr>
+                        <td>Indicadores e metas</td>
+                        <td><span class="badge badge-info">Opcional</span></td>
+                        <td>Catálogo na Fase 2</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="js/app.js" defer></script>
+  </body>
+</html>

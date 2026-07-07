@@ -132,65 +132,65 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Unmapped | Pending |
-| FND-02 | Unmapped | Pending |
-| FND-03 | Unmapped | Pending |
-| FND-04 | Unmapped | Pending |
-| IMP-01 | Unmapped | Pending |
-| IMP-02 | Unmapped | Pending |
-| IMP-03 | Unmapped | Pending |
-| IMP-04 | Unmapped | Pending |
-| IMP-05 | Unmapped | Pending |
-| IMP-06 | Unmapped | Pending |
-| VAL-01 | Unmapped | Pending |
-| VAL-02 | Unmapped | Pending |
-| VAL-03 | Unmapped | Pending |
-| VAL-04 | Unmapped | Pending |
-| VAL-05 | Unmapped | Pending |
-| VAL-06 | Unmapped | Pending |
-| VAL-07 | Unmapped | Pending |
-| VAL-08 | Unmapped | Pending |
-| VAL-09 | Unmapped | Pending |
-| VAL-10 | Unmapped | Pending |
-| NRM-01 | Unmapped | Pending |
-| NRM-02 | Unmapped | Pending |
-| NRM-03 | Unmapped | Pending |
-| NRM-04 | Unmapped | Pending |
-| NRM-05 | Unmapped | Pending |
-| NRM-06 | Unmapped | Pending |
-| FLT-01 | Unmapped | Pending |
-| FLT-02 | Unmapped | Pending |
-| FLT-03 | Unmapped | Pending |
-| FLT-04 | Unmapped | Pending |
-| FLT-05 | Unmapped | Pending |
-| TBL-01 | Unmapped | Pending |
-| TBL-02 | Unmapped | Pending |
-| EXE-01 | Unmapped | Pending |
-| EXE-02 | Unmapped | Pending |
-| EXE-03 | Unmapped | Pending |
-| EXE-04 | Unmapped | Pending |
-| FIN-01 | Unmapped | Pending |
-| FIN-02 | Unmapped | Pending |
-| FIN-03 | Unmapped | Pending |
-| ORD-01 | Unmapped | Pending |
-| ORD-02 | Unmapped | Pending |
-| ORD-03 | Unmapped | Pending |
-| RES-01 | Unmapped | Pending |
-| RES-02 | Unmapped | Pending |
-| RES-03 | Unmapped | Pending |
-| RES-04 | Unmapped | Pending |
-| INS-01 | Unmapped | Pending |
-| INS-02 | Unmapped | Pending |
-| INS-03 | Unmapped | Pending |
-| CLV-01 | Unmapped | Pending |
-| PRD-01 | Unmapped | Pending |
-| CFG-01 | Unmapped | Pending |
+| FND-01 | Phase 1 | Pending |
+| FND-02 | Phase 1 | Pending |
+| FND-03 | Phase 1 | Pending |
+| FND-04 | Phase 2 | Pending |
+| IMP-01 | Phase 2 | Pending |
+| IMP-02 | Phase 2 | Pending |
+| IMP-03 | Phase 2 | Pending |
+| IMP-04 | Phase 3 | Pending |
+| IMP-05 | Phase 3 | Pending |
+| IMP-06 | Phase 4 | Pending |
+| VAL-01 | Phase 3 | Pending |
+| VAL-02 | Phase 3 | Pending |
+| VAL-03 | Phase 3 | Pending |
+| VAL-04 | Phase 3 | Pending |
+| VAL-05 | Phase 3 | Pending |
+| VAL-06 | Phase 3 | Pending |
+| VAL-07 | Phase 3 | Pending |
+| VAL-08 | Phase 3 | Pending |
+| VAL-09 | Phase 3 | Pending |
+| VAL-10 | Phase 3 | Pending |
+| NRM-01 | Phase 3 | Pending |
+| NRM-02 | Phase 3 | Pending |
+| NRM-03 | Phase 4 | Pending |
+| NRM-04 | Phase 4 | Pending |
+| NRM-05 | Phase 4 | Pending |
+| NRM-06 | Phase 4 | Pending |
+| FLT-01 | Phase 4 | Pending |
+| FLT-02 | Phase 4 | Pending |
+| FLT-03 | Phase 4 | Pending |
+| FLT-04 | Phase 4 | Pending |
+| FLT-05 | Phase 4 | Pending |
+| TBL-01 | Phase 4 | Pending |
+| TBL-02 | Phase 4 | Pending |
+| EXE-01 | Phase 5 | Pending |
+| EXE-02 | Phase 5 | Pending |
+| EXE-03 | Phase 5 | Pending |
+| EXE-04 | Phase 5 | Pending |
+| FIN-01 | Phase 6 | Pending |
+| FIN-02 | Phase 6 | Pending |
+| FIN-03 | Phase 6 | Pending |
+| ORD-01 | Phase 7 | Pending |
+| ORD-02 | Phase 7 | Pending |
+| ORD-03 | Phase 7 | Pending |
+| RES-01 | Phase 8 | Pending |
+| RES-02 | Phase 8 | Pending |
+| RES-03 | Phase 8 | Pending |
+| RES-04 | Phase 8 | Pending |
+| INS-01 | Phase 9 | Pending |
+| INS-02 | Phase 9 | Pending |
+| INS-03 | Phase 9 | Pending |
+| CLV-01 | Phase 9 | Pending |
+| PRD-01 | Phase 9 | Pending |
+| CFG-01 | Phase 9 | Pending |
 
 **Coverage:**
 - v1 requirements: 53 total
-- Mapped to phases: 0
-- Unmapped: 53
+- Mapped to phases: 53
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 after initial definition*
+*Last updated: 2026-07-07 after roadmap creation*

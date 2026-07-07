@@ -1,3 +1,42 @@
+const uploadSources = {
+  pedidos: {
+    title: "Pedidos",
+    sampleFileName: "Pedidos_Simplificado.xlsx",
+    body: "Base de pedidos, clientes, status, datas e valores.",
+    required: true
+  },
+  contas: {
+    title: "Contas a pagar",
+    sampleFileName: "PLANILHA CONTAS A PAGAR1.xlsx",
+    body: "Base mensal de contas, fornecedores, vencimentos e pagamentos.",
+    required: true
+  },
+  indicadores: {
+    title: "Indicadores e metas",
+    sampleFileName: "Molde_Momentos_Template_Indicadores.xlsx",
+    body: "Catálogo opcional de indicadores e metas gerenciais.",
+    required: false
+  }
+};
+
+const importState = {
+  pedidos: { status: "pending", metadata: null, error: "" },
+  contas: { status: "pending", metadata: null, error: "" },
+  indicadores: { status: "optional-empty", metadata: null, error: "" }
+};
+
+const uploadInputAttributes = {
+  pedidos: "data-upload-input=\"pedidos\"",
+  contas: "data-upload-input=\"contas\"",
+  indicadores: "data-upload-input=\"indicadores\""
+};
+
+const uploadTriggerAttributes = {
+  pedidos: "data-upload-trigger=\"pedidos\"",
+  contas: "data-upload-trigger=\"contas\"",
+  indicadores: "data-upload-trigger=\"indicadores\""
+};
+
 const routes = {
   upload: {
     eyebrow: "Preparação dos dados",
@@ -65,6 +104,9 @@ const routes = {
 };
 
 const routeNames = Object.keys(routes);
+const requiredImportKinds = Object.entries(uploadSources)
+  .filter(([, source]) => source.required)
+  .map(([kind]) => kind);
 const pageView = document.querySelector("[data-route-view]");
 const pageArea = document.querySelector("#conteudo-principal");
 const shell = document.querySelector(".app-shell");
@@ -72,8 +114,15 @@ const sidebar = document.querySelector("#sidebar");
 const menuToggle = document.querySelector("[data-menu-toggle]");
 const sidebarCloseTargets = document.querySelectorAll("[data-sidebar-close]");
 const themeToggle = document.querySelector("[data-theme-toggle]");
+const topbarImportBadge = document.querySelector(".topbar-actions .badge");
+const topbarUploadButton = document.querySelector(".topbar-actions .button-primary");
 const themeStorageKey = "molde-theme";
 const mobileQuery = window.matchMedia("(max-width: 767px)");
+let shouldFocusPendingUpload = false;
+const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
+  dateStyle: "short",
+  timeStyle: "short"
+});
 
 function getStoredTheme() {
   try {
@@ -137,6 +186,31 @@ function updateActiveLink(route) {
   });
 }
 
+function escapeHTML(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatImportedAt(value) {
+  if (!value) {
+    return "";
+  }
+
+  return dateTimeFormatter.format(new Date(value));
+}
+
+function pluralizeSheet(count) {
+  return count === 1 ? "1 aba" : `${count} abas`;
+}
+
+function pluralizeRow(count) {
+  return count === 1 ? "1 linha" : `${count} linhas`;
+}
+
 function createPageHeader(route) {
   return `
     <header class="page-header">
@@ -158,8 +232,8 @@ function renderEmptyPage(route) {
         <span class="empty-state-icon" aria-hidden="true">${route.icon}</span>
         <h2 id="empty-title">${route.emptyTitle}</h2>
         <p>${route.emptyBody}</p>
-        <button class="button button-outline" type="button" disabled aria-disabled="true">Selecionar planilha</button>
-        <span class="helper-text">Disponível na Fase 2</span>
+        <button class="button button-outline" type="button" data-empty-upload-trigger>Selecionar planilha</button>
+        <span class="helper-text">Disponível na página de Upload</span>
       </div>
     </section>
   `;
@@ -169,9 +243,7 @@ function renderUploadPage(route) {
   return `
     ${createPageHeader(route)}
     <div class="upload-grid" aria-label="Planilhas esperadas">
-      ${createUploadCard("Pendente", "Pedidos", "Pedidos_Simplificado.xlsx", "Base de pedidos, clientes, status, datas e valores.", "badge-neutral")}
-      ${createUploadCard("Pendente", "Contas a pagar", "PLANILHA CONTAS A PAGAR1.xlsx", "Base mensal de contas, fornecedores, vencimentos e pagamentos.", "badge-neutral")}
-      ${createUploadCard("Opcional", "Indicadores e metas", "Molde_Momentos_Template_Indicadores.xlsx", "Catálogo opcional de indicadores e metas gerenciais.", "badge-info")}
+      ${Object.keys(uploadSources).map(createUploadCard).join("")}
     </div>
     <section class="content-grid">
       <article class="card readiness-card">
@@ -197,21 +269,7 @@ function renderUploadPage(route) {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Pedidos</td>
-                <td><span class="badge badge-neutral">Sem dados</span></td>
-                <td>Importação na Fase 2</td>
-              </tr>
-              <tr>
-                <td>Contas a pagar</td>
-                <td><span class="badge badge-neutral">Sem dados</span></td>
-                <td>Importação na Fase 2</td>
-              </tr>
-              <tr>
-                <td>Indicadores e metas</td>
-                <td><span class="badge badge-info">Opcional</span></td>
-                <td>Catálogo na Fase 2</td>
-              </tr>
+              ${Object.keys(uploadSources).map(createPreviewRow).join("")}
             </tbody>
           </table>
         </div>
@@ -220,19 +278,221 @@ function renderUploadPage(route) {
   `;
 }
 
-function createUploadCard(status, title, fileName, body, badgeClass) {
+function createUploadCard(kind) {
+  const source = uploadSources[kind];
+  const view = getUploadCardView(kind);
+
   return `
-    <article class="upload-card">
+    <article class="upload-card ${view.cardClass}" data-upload-card="${kind}" tabindex="-1">
       <div class="card-heading">
-        <span class="badge ${badgeClass}">${status}</span>
-        <h2>${title}</h2>
+        <span class="badge ${view.badgeClass}">${view.badgeText}</span>
+        <h2>${source.title}</h2>
       </div>
-      <p class="file-name">${fileName}</p>
-      <p>${body}</p>
-      <button class="button button-outline" type="button" disabled aria-disabled="true">Selecionar planilha</button>
-      <span class="helper-text">Disponível na Fase 2</span>
+      <p class="file-name">${escapeHTML(view.fileName)}</p>
+      <p>${source.body}</p>
+      ${view.metadataHTML}
+      ${view.errorHTML}
+      <div class="status-region" aria-live="polite">${view.statusText}</div>
+      <input class="file-input" id="upload-${kind}" type="file" accept=".xlsx,.xls" ${uploadInputAttributes[kind]}>
+      <button class="button button-outline" type="button" ${uploadTriggerAttributes[kind]} ${view.disabledAttribute}>
+        ${view.buttonText}
+      </button>
+      <span class="helper-text">${view.helperText}</span>
     </article>
   `;
+}
+
+function createPreviewRow(kind) {
+  const source = uploadSources[kind];
+  const view = getUploadCardView(kind);
+
+  return `
+    <tr>
+      <td>${source.title}</td>
+      <td><span class="badge ${view.badgeClass}">${view.badgeText}</span></td>
+      <td>${view.previewText}</td>
+    </tr>
+  `;
+}
+
+function getUploadCardView(kind) {
+  const source = uploadSources[kind];
+  const state = importState[kind];
+  const metadata = state.metadata;
+  const isReading = state.status === "reading";
+  const isRead = state.status === "read";
+  const isError = state.status === "error";
+  const initialBadge = source.required ? "Obrigatório" : "Opcional não carregado";
+
+  if (isRead && metadata) {
+    return {
+      badgeText: "Lido",
+      badgeClass: "badge-success",
+      buttonText: "Substituir planilha",
+      helperText: "Leitura inicial concluída. Validação estrutural entra na próxima fase.",
+      fileName: metadata.fileName,
+      metadataHTML: createMetadataHTML(metadata),
+      errorHTML: "",
+      statusText: "Planilha lida.",
+      previewText: `${pluralizeSheet(metadata.sheetNames.length)}, ${pluralizeRow(metadata.rowCount)}`,
+      cardClass: "",
+      disabledAttribute: ""
+    };
+  }
+
+  if (isReading) {
+    return {
+      badgeText: "Lendo arquivo",
+      badgeClass: "badge-warning",
+      buttonText: "Lendo arquivo...",
+      helperText: "Aguarde a leitura local do workbook.",
+      fileName: source.sampleFileName,
+      metadataHTML: "",
+      errorHTML: "",
+      statusText: "Lendo arquivo...",
+      previewText: "Leitura em andamento",
+      cardClass: "upload-card-highlight",
+      disabledAttribute: "disabled aria-disabled=\"true\""
+    };
+  }
+
+  if (isError) {
+    return {
+      badgeText: "Erro de leitura",
+      badgeClass: "badge-danger",
+      buttonText: "Selecionar novamente",
+      helperText: source.required ? "Obrigatório" : "Indicadores continuam opcionais.",
+      fileName: source.sampleFileName,
+      metadataHTML: "",
+      errorHTML: `<p class="upload-card-error">${escapeHTML(state.error)}</p>`,
+      statusText: state.error,
+      previewText: "Erro isolado neste card",
+      cardClass: "upload-card-highlight",
+      disabledAttribute: ""
+    };
+  }
+
+  return {
+    badgeText: initialBadge,
+    badgeClass: source.required ? "badge-neutral" : "badge-info",
+    buttonText: "Selecionar planilha",
+    helperText: source.required ? "Obrigatório" : "Opcional não carregado",
+    fileName: source.sampleFileName,
+    metadataHTML: "",
+    errorHTML: "",
+    statusText: source.required ? "Aguardando seleção." : "Opcional não carregado.",
+    previewText: source.required ? "Aguardando importação" : "Opcional",
+    cardClass: "",
+    disabledAttribute: ""
+  };
+}
+
+function createMetadataHTML(metadata) {
+  const monthlyText = metadata.monthlySheetNames.length
+    ? `<li>Abas mensais: ${metadata.monthlySheetNames.map(escapeHTML).join(", ")}</li>`
+    : "";
+
+  return `
+    <ul class="upload-card-meta">
+      <li>Arquivo: ${escapeHTML(metadata.fileName)}</li>
+      <li>Aba principal: ${escapeHTML(metadata.primarySheetName || "Não identificada")}</li>
+      <li>${pluralizeSheet(metadata.sheetNames.length)} no workbook</li>
+      <li>${pluralizeRow(metadata.rowCount)} na aba principal</li>
+      <li>Importado em ${formatImportedAt(metadata.importedAt)}</li>
+      ${monthlyText}
+    </ul>
+  `;
+}
+
+async function handleUploadSelection(kind, file) {
+  if (!uploadSources[kind]) {
+    return;
+  }
+
+  setImportStatus(kind, "reading");
+
+  try {
+    const metadata = await window.MoldeImporter.readWorkbookFile(file, kind);
+    setImportStatus(kind, "read", { metadata });
+  } catch (error) {
+    setImportStatus(kind, "error", {
+      error: error instanceof Error ? error.message : "Não foi possível ler a planilha."
+    });
+  }
+}
+
+function setImportStatus(kind, status, payload = {}) {
+  const previousMetadata = importState[kind].metadata;
+
+  importState[kind] = {
+    status,
+    metadata: payload.metadata || (status === "reading" ? previousMetadata : null),
+    error: payload.error || ""
+  };
+
+  renderCurrentRoute({ preserveFocus: true });
+  updateTopbarImportStatus();
+}
+
+function getRequiredImportCount() {
+  return requiredImportKinds.filter((kind) => importState[kind].status === "read").length;
+}
+
+function updateTopbarImportStatus() {
+  const readCount = getRequiredImportCount();
+  const statusText = readCount === 0
+    ? "Sem dados importados"
+    : readCount === 1
+      ? "1 de 2 obrigatórias lida"
+      : "Bases obrigatórias lidas";
+
+  if (topbarImportBadge) {
+    topbarImportBadge.textContent = statusText;
+    topbarImportBadge.className = `badge ${readCount === requiredImportKinds.length ? "badge-success" : "badge-info"}`;
+  }
+
+  if (topbarUploadButton) {
+    topbarUploadButton.disabled = false;
+    topbarUploadButton.removeAttribute("aria-disabled");
+    topbarUploadButton.textContent = readCount === requiredImportKinds.length ? "Revisar importação" : "Selecionar planilha";
+  }
+}
+
+function focusFirstPendingUploadCard() {
+  if (getRouteFromHash() !== "upload") {
+    shouldFocusPendingUpload = true;
+    window.location.hash = "upload";
+    return;
+  }
+
+  const pendingKind = requiredImportKinds.find((kind) => importState[kind].status !== "read") || "pedidos";
+  const card = document.querySelector(`[data-upload-card="${pendingKind}"]`);
+  card?.focus({ preventScroll: true });
+  card?.scrollIntoView({ behavior: "smooth", block: "center" });
+  card?.classList.add("upload-card-highlight");
+}
+
+function attachRouteInteractions() {
+  document.querySelectorAll("[data-upload-trigger]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const input = document.querySelector(`[data-upload-input="${trigger.dataset.uploadTrigger}"]`);
+      input?.click();
+    });
+  });
+
+  document.querySelectorAll("[data-upload-input]").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      handleUploadSelection(event.target.dataset.uploadInput, file);
+      event.target.value = "";
+    });
+  });
+
+  document.querySelectorAll("[data-empty-upload-trigger]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      window.location.hash = "upload";
+    });
+  });
 }
 
 function closeMobileSidebar() {
@@ -256,26 +516,42 @@ function syncSidebarAccessibility() {
   sidebar.setAttribute("aria-hidden", String(isMobileClosed));
 }
 
-function renderRoute() {
+function renderCurrentRoute(options = {}) {
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
   updateActiveLink(routeName);
   pageView.innerHTML = route.render ? route.render(route) : renderEmptyPage(route);
+  attachRouteInteractions();
   document.title = `${route.title} - Molde Momentos Dashboard Local`;
   closeMobileSidebar();
-  pageArea.focus({ preventScroll: true });
+
+  if (shouldFocusPendingUpload && routeName === "upload") {
+    shouldFocusPendingUpload = false;
+    focusFirstPendingUploadCard();
+    return;
+  }
+
+  if (!options.preserveFocus) {
+    pageArea.focus({ preventScroll: true });
+  }
+}
+
+function renderRoute() {
+  renderCurrentRoute();
 }
 
 applyTheme(getInitialTheme());
 syncSidebarAccessibility();
 renderRoute();
+updateTopbarImportStatus();
 
 window.addEventListener("hashchange", renderRoute);
 mobileQuery.addEventListener("change", syncSidebarAccessibility);
 
 menuToggle.addEventListener("click", toggleMobileSidebar);
 themeToggle.addEventListener("click", toggleTheme);
+topbarUploadButton?.addEventListener("click", focusFirstPendingUploadCard);
 sidebarCloseTargets.forEach((target) => target.addEventListener("click", closeMobileSidebar));
 
 document.querySelectorAll("[data-route-link]").forEach((link) => {

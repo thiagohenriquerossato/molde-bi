@@ -11,7 +11,7 @@
 | # | Phase | Goal | Requirements | Success Criteria |
 |---|-------|------|--------------|------------------|
 | 1 | Fundação Estática e Design System | Criar shell local e base visual vanilla | FND-01, FND-02, FND-03 | 4 |
-| 2 | Vendor e Importação Excel | 2/2 | Complete   | 2026-07-07 |
+| 2 | Vendor e Importação Excel | 2/2 | Complete    | 2026-07-07 |
 | 3 | Validação e Regras de Entrada | Validar workbooks, abas, colunas e linhas | IMP-04, IMP-05, VAL-01..VAL-10, NRM-01, NRM-02 | 5 |
 | 4 | Normalização, Estado e Tabelas | Criar dados internos, persistência, filtros e tabelas | IMP-06, NRM-03..NRM-06, FLT-01..FLT-05, TBL-01, TBL-02 | 5 |
 | 5 | Dashboard Executivo | Entregar visão geral confiável do negócio | EXE-01, EXE-02, EXE-03, EXE-04 | 4 |

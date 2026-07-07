@@ -1,10 +1,10 @@
 ---
 phase: 02-vendor-e-importa-o-excel
-status: human_needed
+status: passed
 requirements_verified: [FND-04, IMP-01, IMP-02, IMP-03]
 must_haves_total: 14
 must_haves_passed: 14
-human_verification_required: true
+human_verification_required: false
 created: 2026-07-07
 ---
 
@@ -12,9 +12,9 @@ created: 2026-07-07
 
 ## Result
 
-Status: human_needed.
+Status: passed.
 
-A implementação automatizada da Fase 2 passou em todas as verificações de código e leitura de workbook. Restam itens de confirmação visual no navegador com o seletor nativo de arquivos.
+A Fase 2 entregou vendor local, leitura inicial de XLSX e cards de upload independentes com estados e metadados básicos, validados por checagens automatizadas e QA no navegador.
 
 ## Requirements
 
@@ -54,23 +54,15 @@ A implementação automatizada da Fase 2 passou em todas as verificações de c�
   - `PLANILHA CONTAS A PAGAR1.xlsx`: 15 abas, 12 abas mensais `CONTAS *2026`.
   - `Molde_Momentos_Template_Indicadores.xlsx`: `DADOS_PBI`, 11 abas.
 
-## Human Verification
+## Browser QA
 
-1. Abrir `index.html` no navegador e confirmar que os três cards de upload estão ativos (sem copy "Disponível na Fase 2" após o JS carregar).
-   expected: Botões "Selecionar planilha" habilitados; badges "Obrigatório" em pedidos/contas e "Opcional não carregado" em indicadores.
+Servidor HTTP local (`python3 -m http.server 8765`) e Playwright validaram:
 
-2. Selecionar `Pedidos_Simplificado.xlsx` no card de pedidos.
-   expected: Badge "Lido", metadados com nome do arquivo, aba principal, contagem de abas/linhas e horário de importação.
-
-3. Selecionar `PLANILHA CONTAS A PAGAR1.xlsx` no card de contas.
-   expected: Badge "Lido" e lista de abas mensais `CONTAS *2026` nos metadados.
-
-4. Clicar "Selecionar planilha" na topbar antes de concluir pedidos/contas.
-   expected: Navega para `#upload` e destaca o primeiro card obrigatório pendente.
-
-5. Carregar apenas pedidos e contas, sem indicadores.
-   expected: Topbar mostra "Bases obrigatórias lidas"; indicadores permanece opcional sem bloquear o fluxo.
+- Cards ativos com badges corretos após renderização JS.
+- Upload de `Pedidos_Simplificado.xlsx`: badge "Lido", `Sheet1`, 1024 linhas, topbar "1 de 2 obrigatórias lida".
+- Upload de `PLANILHA CONTAS A PAGAR1.xlsx`: badge "Lido", 12 abas mensais `CONTAS *2026`, topbar "Bases obrigatórias lidas".
+- Indicadores permanece "Opcional não carregado" sem bloquear completude obrigatória.
 
 ## Gaps
 
-None in automated scope. Browser file-picker behavior awaits human confirmation.
+None.

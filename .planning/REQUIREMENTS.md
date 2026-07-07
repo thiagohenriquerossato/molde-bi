@@ -12,13 +12,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FND-01**: User can open `index.html` locally and see the application shell without a backend.
 - [x] **FND-02**: User can navigate fixed pages from a clear sidebar or top navigation.
 - [x] **FND-03**: User sees a visual system based on `docs/` tokens, with pt-BR labels, compact cards, dense tables and semantic badges.
-- [ ] **FND-04**: User can use the app without runtime internet access after vendor libraries are present locally.
+- [x] **FND-04**: User can use the app without runtime internet access after vendor libraries are present locally.
 
 ### Import
 
-- [ ] **IMP-01**: User can upload the pedidos spreadsheet from the upload page.
-- [ ] **IMP-02**: User can upload the contas a pagar spreadsheet from the upload page.
-- [ ] **IMP-03**: User can optionally upload the indicadores/metas spreadsheet from the upload page.
+- [x] **IMP-01**: User can upload the pedidos spreadsheet from the upload page.
+- [x] **IMP-02**: User can upload the contas a pagar spreadsheet from the upload page.
+- [x] **IMP-03**: User can optionally upload the indicadores/metas spreadsheet from the upload page.
 - [ ] **IMP-04**: User receives a clear validation summary after each workbook is read.
 - [ ] **IMP-05**: User can continue to dashboards when only non-critical warnings exist.
 - [ ] **IMP-06**: User can restore the latest normalized dataset from local browser storage.
@@ -135,10 +135,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FND-01 | Phase 1 | Complete |
 | FND-02 | Phase 1 | Complete |
 | FND-03 | Phase 1 | Complete |
-| FND-04 | Phase 2 | Pending |
-| IMP-01 | Phase 2 | Pending |
-| IMP-02 | Phase 2 | Pending |
-| IMP-03 | Phase 2 | Pending |
+| FND-04 | Phase 2 | Complete |
+| IMP-01 | Phase 2 | Complete |
+| IMP-02 | Phase 2 | Complete |
+| IMP-03 | Phase 2 | Complete |
 | IMP-04 | Phase 3 | Pending |
 | IMP-05 | Phase 3 | Pending |
 | IMP-06 | Phase 4 | Pending |

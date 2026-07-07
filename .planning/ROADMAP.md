@@ -25,6 +25,8 @@
 
 ### Phase 1: Fundação Estática e Design System
 
+**Status:** Complete — 2026-07-07
+
 **Goal:** Criar a base estática do sistema, com navegação, layout e tokens visuais prontos para receber dados reais.
 
 **Requirements:** FND-01, FND-02, FND-03

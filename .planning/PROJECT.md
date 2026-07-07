@@ -14,11 +14,11 @@ O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamen
 
 ### Validated
 
-(None yet - ship to validate)
+- [x] O usuário consegue abrir o sistema localmente pelo navegador sem backend, banco externo ou login. Validated in Phase 1: Fundação Estática e Design System.
+- [x] O sistema segue o design system dos documentos em `docs/`, com visual híbrido entre BI executivo e ERP operacional denso. Validated in Phase 1: Fundação Estática e Design System.
 
 ### Active
 
-- [ ] O usuário consegue abrir o sistema localmente pelo navegador sem backend, banco externo ou login.
 - [ ] O usuário consegue importar as planilhas de pedidos, contas a pagar e indicadores/metas.
 - [ ] O sistema valida estrutura, colunas, abas, datas, valores e inconsistências críticas antes de exibir dashboards.
 - [ ] O sistema normaliza pedidos, contas e indicadores em tabelas internas limpas.
@@ -26,7 +26,6 @@ O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamen
 - [ ] O sistema apresenta dashboard executivo, financeiro, pedidos, resultado integrado, insights, base de dados e metas.
 - [ ] O sistema aplica filtros globais e específicos em cards, gráficos e tabelas.
 - [ ] O sistema persiste localmente os últimos dados carregados e permite exportar dados filtrados para CSV.
-- [ ] O sistema segue o design system dos documentos em `docs/`, com visual híbrido entre BI executivo e ERP operacional denso.
 
 ### Out of Scope
 
@@ -63,7 +62,7 @@ Os documentos visuais em `docs/` definem um produto operacional denso, com sideb
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Usar aplicação estática vanilla | Reduz dependências e atende ao requisito de abrir localmente sem backend | - Pending |
+| Usar aplicação estática vanilla | Reduz dependências e atende ao requisito de abrir localmente sem backend | Completed in Phase 1 |
 | Vendorizar SheetJS e ECharts | Permite leitura XLSX e dashboards sem depender da internet em runtime | - Pending |
 | Priorizar ECharts | Oferece heatmap, waterfall, gráficos combinados e interações melhores para dashboards completos | - Pending |
 | Usar visual híbrido | O executivo precisa ser mais analítico, enquanto operação precisa de densidade e tabelas | - Pending |
@@ -89,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-07-07 after initialization*
+*Last updated: 2026-07-07 after Phase 1 completion*

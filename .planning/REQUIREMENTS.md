@@ -9,9 +9,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FND-01**: User can open `index.html` locally and see the application shell without a backend.
-- [ ] **FND-02**: User can navigate fixed pages from a clear sidebar or top navigation.
-- [ ] **FND-03**: User sees a visual system based on `docs/` tokens, with pt-BR labels, compact cards, dense tables and semantic badges.
+- [x] **FND-01**: User can open `index.html` locally and see the application shell without a backend.
+- [x] **FND-02**: User can navigate fixed pages from a clear sidebar or top navigation.
+- [x] **FND-03**: User sees a visual system based on `docs/` tokens, with pt-BR labels, compact cards, dense tables and semantic badges.
 - [ ] **FND-04**: User can use the app without runtime internet access after vendor libraries are present locally.
 
 ### Import
@@ -132,9 +132,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
 | FND-04 | Phase 2 | Pending |
 | IMP-01 | Phase 2 | Pending |
 | IMP-02 | Phase 2 | Pending |

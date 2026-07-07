@@ -16,10 +16,11 @@ O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamen
 
 - [x] O usuário consegue abrir o sistema localmente pelo navegador sem backend, banco externo ou login. Validated in Phase 1: Fundação Estática e Design System.
 - [x] O sistema segue o design system dos documentos em `docs/`, com visual híbrido entre BI executivo e ERP operacional denso. Validated in Phase 1: Fundação Estática e Design System.
+- [x] O usuário consegue usar o app sem internet em runtime após as bibliotecas locais estarem presentes. Validated in Phase 2: Vendor e Importação Excel.
+- [x] O usuário consegue selecionar e ler as planilhas de pedidos, contas a pagar e indicadores/metas na página de upload. Validated in Phase 2: Vendor e Importação Excel.
 
 ### Active
 
-- [ ] O usuário consegue importar as planilhas de pedidos, contas a pagar e indicadores/metas.
 - [ ] O sistema valida estrutura, colunas, abas, datas, valores e inconsistências críticas antes de exibir dashboards.
 - [ ] O sistema normaliza pedidos, contas e indicadores em tabelas internas limpas.
 - [ ] O sistema separa pipeline, receita ativa, receita recebida e valores a receber sem inflar indicadores.
@@ -63,7 +64,7 @@ Os documentos visuais em `docs/` definem um produto operacional denso, com sideb
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Usar aplicação estática vanilla | Reduz dependências e atende ao requisito de abrir localmente sem backend | Completed in Phase 1 |
-| Vendorizar SheetJS e ECharts | Permite leitura XLSX e dashboards sem depender da internet em runtime | - Pending |
+| Vendorizar SheetJS e ECharts | Permite leitura XLSX e dashboards sem depender da internet em runtime | Completed in Phase 2 |
 | Priorizar ECharts | Oferece heatmap, waterfall, gráficos combinados e interações melhores para dashboards completos | - Pending |
 | Usar visual híbrido | O executivo precisa ser mais analítico, enquanto operação precisa de densidade e tabelas | - Pending |
 | Separar pipeline de receita ativa | Evita inflar resultados com pedidos em aprovação/orçamento | - Pending |
@@ -88,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state.
 
 ---
-*Last updated: 2026-07-07 after Phase 1 completion*
+*Last updated: 2026-07-07 after Phase 2 completion*

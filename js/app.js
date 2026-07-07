@@ -66,11 +66,14 @@ const routes = {
 
 const routeNames = Object.keys(routes);
 const pageView = document.querySelector("[data-route-view]");
+const pageArea = document.querySelector("#conteudo-principal");
 const shell = document.querySelector(".app-shell");
+const sidebar = document.querySelector("#sidebar");
 const menuToggle = document.querySelector("[data-menu-toggle]");
 const sidebarCloseTargets = document.querySelectorAll("[data-sidebar-close]");
 const themeToggle = document.querySelector("[data-theme-toggle]");
 const themeStorageKey = "molde-theme";
+const mobileQuery = window.matchMedia("(max-width: 767px)");
 
 function getStoredTheme() {
   try {
@@ -236,6 +239,7 @@ function closeMobileSidebar() {
   shell.dataset.sidebarOpen = "false";
   menuToggle.setAttribute("aria-expanded", "false");
   menuToggle.setAttribute("aria-label", "Abrir menu");
+  syncSidebarAccessibility();
 }
 
 function toggleMobileSidebar() {
@@ -243,6 +247,13 @@ function toggleMobileSidebar() {
   shell.dataset.sidebarOpen = String(!isOpen);
   menuToggle.setAttribute("aria-expanded", String(!isOpen));
   menuToggle.setAttribute("aria-label", isOpen ? "Abrir menu" : "Fechar menu");
+  syncSidebarAccessibility();
+}
+
+function syncSidebarAccessibility() {
+  const isMobileClosed = mobileQuery.matches && shell.dataset.sidebarOpen !== "true";
+  sidebar.toggleAttribute("inert", isMobileClosed);
+  sidebar.setAttribute("aria-hidden", String(isMobileClosed));
 }
 
 function renderRoute() {
@@ -251,13 +262,17 @@ function renderRoute() {
   ensureValidHash(routeName);
   updateActiveLink(routeName);
   pageView.innerHTML = route.render ? route.render(route) : renderEmptyPage(route);
+  document.title = `${route.title} - Molde Momentos Dashboard Local`;
   closeMobileSidebar();
+  pageArea.focus({ preventScroll: true });
 }
 
 applyTheme(getInitialTheme());
+syncSidebarAccessibility();
 renderRoute();
 
 window.addEventListener("hashchange", renderRoute);
+mobileQuery.addEventListener("change", syncSidebarAccessibility);
 
 menuToggle.addEventListener("click", toggleMobileSidebar);
 themeToggle.addEventListener("click", toggleTheme);

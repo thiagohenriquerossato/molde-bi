@@ -5,65 +5,136 @@
 
 **Date:** 2026-07-08
 **Phase:** 4-Normalização, Estado e Tabelas
-**Areas discussed:** Momento da normalização e persistência
+**Areas discussed:** Momento da normalização e persistência; Campos derivados; Escopo dos filtros; Experiência das tabelas
 
 ---
 
-## Momento da normalização e persistência
+## Sessão 1 — Momento da normalização e persistência
 
-### Quando a normalização deve rodar pela primeira vez?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Ao clicar "Continuar para dashboards" | Normaliza só quando o usuário confirma que quer seguir | |
-| Automaticamente após validação bem-sucedida | Normaliza assim que Pedidos e Contas passam sem erros críticos | ✓ |
-| Botão explícito "Normalizar dados" | Usuário controla quando rodar | |
-
-**User's choice:** Automaticamente após validação bem-sucedida
-**Notes:** CTA de dashboards permanece atalho de navegação, não gatilho de normalização.
-
-### O que acontece quando o usuário substitui uma planilha já validada?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Re-normalizar automaticamente | Dataset sempre consistente com o que está carregado | ✓ |
-| Invalidar dataset e exigir nova ação | Não reprocessar sozinho | |
-| Re-normalizar só a fonte trocada manualmente | Manter outras intactas até ação manual | |
-
-**User's choice:** Re-normalizar automaticamente ao substituir planilha
-
-### O que deve ser persistido localmente?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| IndexedDB dataset completo + metadados | Alinha com PROJECT.md; restaura sem re-upload | ✓ |
-| IndexedDB só tabelas normalizadas | Metadados de upload ficam em memória | |
-| localStorage compacto | Mais simples, limitado em volume | |
-
-**User's choice:** IndexedDB com dataset normalizado completo e metadados de importação
-
-### Como o app deve se comportar ao reabrir o navegador?
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Restaurar e ir para Executivo | Retomar de onde parou | ✓ |
-| Restaurar mas manter na página Upload | Indicador de dados restaurados | |
-| Perguntar se quer restaurar | Começar do zero ou retomar | |
-
-**User's choice:** Restaurar automaticamente e navegar direto para `#executivo`
+| Question | Selected |
+|----------|----------|
+| Quando normalizar? | Automaticamente após validação bem-sucedida |
+| Substituir planilha? | Re-normalizar automaticamente |
+| Persistência? | IndexedDB dataset completo + metadados |
+| Reabrir app? | Restaurar e ir para `#executivo` |
 
 ---
 
-## Áreas não discutidas (defaults aplicados no CONTEXT.md)
+## Sessão 2 — Campos derivados
 
-- Campos derivados — seguir `docs/resume.md` §3
-- Escopo dos filtros — `FLT-01`..`FLT-05`; avançados v2 fora do escopo
-- Experiência das tabelas — Base de Dados como hub; paginação, ordenação, busca, destaque TBL-02
+### Situações de pedido fora da tabela padrão
+
+| Option | Selected |
+|--------|----------|
+| Mapeamento estrito → "Sem status" + alerta | ✓ |
+| Match tolerante (fuzzy) | |
+| Manter original como grupo | |
+
+### status_financeiro
+
+| Option | Selected |
+|--------|----------|
+| Três estados (Quitado/Parcial/Pendente) | |
+| Quatro estados com Inconsistente | |
+| Você decide | ✓ |
+
+**Resolved:** executor usa Quitado / Parcial / Pendente.
+
+### Prazo e atraso para pedidos não entregues
+
+| Option | Selected |
+|--------|----------|
+| Regras resume.md §7; em aberto neutro | ✓ |
+| Atraso projetado com data de hoje | |
+| Dois campos (real + projetado) | |
+
+### Classificação de indicadores
+
+| Option | Selected |
+|--------|----------|
+| Catálogo fixo + DADOS_PBI | ✓ |
+| Só planilha | |
+| Calcular tudo possível | |
+
+---
+
+## Sessão 2 — Escopo dos filtros
+
+### Onde os filtros aparecem
+
+| Option | Selected |
+|--------|----------|
+| Painel global na topbar + específicos na Base de Dados | ✓ |
+| Só Base de Dados nesta fase | |
+| Barra lateral fixa | |
+
+### Páginas com filtros funcionais
+
+| Option | Selected |
+|--------|----------|
+| Visíveis em todas; dados reais só na Base de Dados | ✓ |
+| Só Base de Dados e Upload | |
+| Todas reagem mesmo com placeholders | |
+
+### Campo de data do período
+
+| Option | Selected |
+|--------|----------|
+| Contextual (cadastro / vencimento / aba ativa) | ✓ |
+| Sempre cadastro/competência | |
+| Usuário escolhe campo | |
+
+### Filtros categóricos
+
+| Option | Selected |
+|--------|----------|
+| Seleção única + chips | |
+| Multi-seleção nesta fase | ✓ |
+| Autocomplete por texto | |
+
+---
+
+## Sessão 2 — Experiência das tabelas
+
+### Organização na Base de Dados
+
+| Option | Selected |
+|--------|----------|
+| Abas Pedidos \| Contas \| Indicadores | ✓ |
+| Accordion empilhado | |
+| Tabela única com coluna Origem | |
+
+### Colunas visíveis por padrão
+
+| Option | Selected |
+|--------|----------|
+| Negócio principal; técnicos ocultos | ✓ |
+| Todas as colunas | |
+| Mínimo operacional | |
+
+### Paginação
+
+| Option | Selected |
+|--------|----------|
+| 25/50/100 clássica | |
+| 50 padrão | |
+| Scroll virtual | ✓ |
+
+### Destaque de inconsistências (TBL-02)
+
+| Option | Selected |
+|--------|----------|
+| Fundo sutil + badge na coluna status/id | ✓ |
+| Ícone com tooltip | |
+| Aba/filtro "Só inconsistências" | |
+
+---
 
 ## the agent's Discretion
 
-- Schema IndexedDB, módulos internos, colunas padrão, formato CSV, estratégia incremental vs recomputação total
+- status_financeiro: Quitado / Parcial / Pendente
+- Schema IndexedDB, módulos internos, colunas técnicas ocultas, implementação do virtual scroll, CSV
 
 ## Deferred Ideas
 
-- KPIs/gráficos (Fases 5–9), salvar visão de filtro (v2), alertas automáticos (Fase 9)
+- KPIs/gráficos (Fases 5–9), salvar visão (v2), filtro por gráfico (v2), insights (Fase 9)

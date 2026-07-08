@@ -238,6 +238,244 @@
       .slice(0, limit);
   }
 
+  const VENCE_7_STATUS = ["Vence hoje", "Próximos 7 dias"];
+  const VENCE_30_STATUS = ["Vence hoje", "Próximos 7 dias", "Próximos 30 dias"];
+
+  function sumByGroup(rows, keyGetter) {
+    const totals = new Map();
+    (rows || []).forEach((row) => {
+      const key = keyGetter(row);
+      const label = key && String(key).trim() !== "" ? String(key) : null;
+      if (label === null) {
+        return;
+      }
+      totals.set(label, (totals.get(label) || 0) + (row.valor || 0));
+    });
+    return totals;
+  }
+
+  function largestGroup(rows, keyGetter) {
+    const totals = sumByGroup(rows, keyGetter);
+    let nome = "—";
+    let valor = 0;
+    totals.forEach((value, label) => {
+      if (value > valor) {
+        valor = value;
+        nome = label;
+      }
+    });
+    return { nome, valor };
+  }
+
+  function computeFinanceKpis(contas) {
+    const rows = contas || [];
+    const totalContas = sumField(rows, (row) => row.valor);
+    const totalPago = sumField(rows, (row) => (row.pago ? row.valor : 0));
+    const totalAberto = sumField(rows, (row) => (!row.pago ? row.valor : 0));
+    const totalVencido = sumField(
+      rows.filter((row) => row.status_pagamento === "Vencido"),
+      (row) => row.valor
+    );
+    const venceHoje = sumField(
+      rows.filter((row) => row.status_pagamento === "Vence hoje"),
+      (row) => row.valor
+    );
+    const vence7 = sumField(
+      rows.filter((row) => VENCE_7_STATUS.includes(row.status_pagamento)),
+      (row) => row.valor
+    );
+    const vence30 = sumField(
+      rows.filter((row) => VENCE_30_STATUS.includes(row.status_pagamento)),
+      (row) => row.valor
+    );
+
+    const monthTotals = new Map();
+    rows.forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      monthTotals.set(month, (monthTotals.get(month) || 0) + (row.valor || 0));
+    });
+    const mediaMensalDespesas = monthTotals.size
+      ? Array.from(monthTotals.values()).reduce((total, value) => total + value, 0) / monthTotals.size
+      : 0;
+
+    const fixaTotal = sumField(rows.filter(isDespesaFixa), (row) => row.valor);
+    const percentualFixas = totalContas > 0 ? (fixaTotal / totalContas) * 100 : 0;
+    const percentualVariaveis = totalContas > 0 ? 100 - percentualFixas : 0;
+
+    return {
+      totalContas,
+      totalPago,
+      totalAberto,
+      totalVencido,
+      venceHoje,
+      vence7,
+      vence30,
+      mediaMensalDespesas,
+      maiorFornecedor: largestGroup(rows, (row) => row.fornecedor),
+      maiorClassificacao: largestGroup(rows, (row) => row.classificacao),
+      percentualFixas,
+      percentualVariaveis
+    };
+  }
+
+  function aggregateExpensesByMonth(contas) {
+    const months = new Set();
+    const valorMap = new Map();
+    (contas || []).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      valorMap.set(month, (valorMap.get(month) || 0) + (row.valor || 0));
+    });
+    return sortMonths(months).map((month) => ({ month, valor: valorMap.get(month) || 0 }));
+  }
+
+  function aggregatePaidOpenByMonth(contas) {
+    const months = new Set();
+    const pagoMap = new Map();
+    const abertoMap = new Map();
+    (contas || []).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      const value = row.valor || 0;
+      if (row.pago) {
+        pagoMap.set(month, (pagoMap.get(month) || 0) + value);
+      } else {
+        abertoMap.set(month, (abertoMap.get(month) || 0) + value);
+      }
+    });
+    return sortMonths(months).map((month) => ({
+      month,
+      pago: pagoMap.get(month) || 0,
+      aberto: abertoMap.get(month) || 0
+    }));
+  }
+
+  function toSortedEntries(totals, limit) {
+    const entries = Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+    return limit ? entries.slice(0, limit) : entries;
+  }
+
+  function expensesByCategory(contas) {
+    return toSortedEntries(sumByGroup(contas, (row) => row.categoria || "Sem categoria"));
+  }
+
+  function expensesByClassification(contas, limit = 12) {
+    return toSortedEntries(sumByGroup(contas, (row) => row.classificacao || "Sem classificação"), limit);
+  }
+
+  function topSuppliers(contas, limit = 15) {
+    return toSortedEntries(sumByGroup(contas, (row) => row.fornecedor || "Sem fornecedor"), limit);
+  }
+
+  function expensesByBankAccount(contas) {
+    return toSortedEntries(sumByGroup(contas, (row) => row.conta || "Sem conta"));
+  }
+
+  function dueHeatmapMatrix(contas) {
+    const monthSet = new Set();
+    const cells = new Map();
+    (contas || [])
+      .filter((row) => !row.pago && row.data_vencimento)
+      .forEach((row) => {
+        const month = monthKeyFromConta(row);
+        const date = new Date(row.data_vencimento);
+        if (!month || Number.isNaN(date.getTime())) {
+          return;
+        }
+        monthSet.add(month);
+        const day = date.getDate();
+        const key = `${month}|${day}`;
+        cells.set(key, (cells.get(key) || 0) + (row.valor || 0));
+      });
+    const months = sortMonths(monthSet);
+    const data = [];
+    cells.forEach((valor, key) => {
+      const [month, day] = key.split("|");
+      const monthIndex = months.indexOf(month);
+      if (monthIndex === -1) {
+        return;
+      }
+      data.push([Number(day) - 1, monthIndex, valor]);
+    });
+    return { months, data };
+  }
+
+  function supplierAbc(contas, limit = 15) {
+    const all = toSortedEntries(sumByGroup(contas, (row) => row.fornecedor || "Sem fornecedor"));
+    const total = all.reduce((sum, item) => sum + item.value, 0);
+    const top = all.slice(0, limit);
+    const rest = all.slice(limit);
+    const outros = rest.reduce((sum, item) => sum + item.value, 0);
+    const items = [...top];
+    if (outros > 0) {
+      items.push({ label: "Outros", value: outros });
+    }
+    let acumulado = 0;
+    const withPct = items.map((item) => {
+      acumulado += item.value;
+      return {
+        label: item.label,
+        value: item.value,
+        acumuladoPct: total > 0 ? (acumulado / total) * 100 : 0
+      };
+    });
+    return { items: withPct, total };
+  }
+
+  function getOverdueContasAll(contas) {
+    return (contas || [])
+      .filter((row) => row.status_pagamento === "Vencido")
+      .sort((a, b) => (b.dias_atraso || 0) - (a.dias_atraso || 0));
+  }
+
+  function getUpcomingContasAll(contas) {
+    return (contas || [])
+      .filter((row) => VENCE_7_STATUS.includes(row.status_pagamento))
+      .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento));
+  }
+
+  function getContasSemValor(contas) {
+    return (contas || []).filter(
+      (row) =>
+        row.valor === null ||
+        row.valor === undefined ||
+        row.valor === 0 ||
+        row.status_pagamento === "Lançamento incompleto"
+    );
+  }
+
+  function getContasSemClassificacao(contas) {
+    return (contas || []).filter((row) => !row.classificacao || String(row.classificacao).trim() === "");
+  }
+
+  function getContasPagasSemData(contas) {
+    return (contas || []).filter((row) => row.pago === true && !row.data_pagamento);
+  }
+
+  function getContasFuturas(contas) {
+    return (contas || [])
+      .filter((row) => row.status_pagamento === "Futuro")
+      .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento));
+  }
+
+  function formatPercent(value) {
+    if (!Number.isFinite(value)) {
+      return "—";
+    }
+    return `${value.toFixed(1).replace(".", ",")}%`;
+  }
+
   function formatCurrency(value) {
     if (!Number.isFinite(value)) {
       return "—";
@@ -261,6 +499,22 @@
     topVendorsByRevenue,
     getOverdueContas,
     getUpcomingContas,
+    computeFinanceKpis,
+    aggregateExpensesByMonth,
+    aggregatePaidOpenByMonth,
+    expensesByCategory,
+    expensesByClassification,
+    topSuppliers,
+    expensesByBankAccount,
+    dueHeatmapMatrix,
+    supplierAbc,
+    getOverdueContasAll,
+    getUpcomingContasAll,
+    getContasSemValor,
+    getContasSemClassificacao,
+    getContasPagasSemData,
+    getContasFuturas,
+    formatPercent,
     formatCurrency
   };
 })();

@@ -60,7 +60,8 @@ const routes = {
     description: "Acompanhamento de despesas, vencimentos e pagamentos.",
     emptyTitle: "Financeiro sem contas importadas",
     emptyBody: "As análises de contas a pagar aparecerão após a importação da planilha financeira.",
-    icon: "FN"
+    icon: "FN",
+    render: renderFinanceiroPage
   },
   pedidos: {
     eyebrow: "Operação comercial",
@@ -131,7 +132,9 @@ const appState = { dataset: null, restoredFromStore: false };
 let filterState = { search: "" };
 let baseDadosTab = "pedidos";
 let executiveChartInstances = [];
+let financeChartInstances = [];
 let executiveResizeTimer = null;
+const ANALYTICAL_ROUTES = ["executivo", "financeiro", "pedidos", "resultado", "insights"];
 const tableSortState = {
   pedidos: { key: null, direction: null },
   contas: { key: null, direction: null },
@@ -141,7 +144,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short"
 });
-const shortDateFormatter = new Intl.DateTimeFormat("pt-BR");
 
 function getStoredTheme() {
   try {
@@ -184,6 +186,9 @@ function toggleTheme() {
   setStoredTheme(nextTheme);
   if (getRouteFromHash() === "executivo" && canContinueToDashboards()) {
     mountExecutivoDashboard();
+  }
+  if (getRouteFromHash() === "financeiro" && hasContasData()) {
+    mountFinanceiroDashboard();
   }
 }
 
@@ -378,24 +383,69 @@ function updateFilterDropdownSummary(checkbox) {
   }
 }
 
-function renderFilterPanelContent() {
-  if (!filterPanel) {
-    return;
-  }
-  if (!hasDataset()) {
-    filterPanel.innerHTML = `<p class="helper-text">Carregue planilhas para filtrar dados.</p>`;
-    return;
-  }
+function renderPeriodFilterFields() {
+  return `
+    <label>Ano<input type="number" data-filter-field="year" value="${filterState.year ?? ""}" min="2020" max="2035"></label>
+    <label>Mês<input type="number" data-filter-field="month" value="${filterState.month ?? ""}" min="1" max="12"></label>
+    <label>Valor mínimo<input type="number" step="0.01" data-filter-field="valueMin" value="${filterState.valueMin ?? ""}"></label>
+    <label>Valor máximo<input type="number" step="0.01" data-filter-field="valueMax" value="${filterState.valueMax ?? ""}"></label>
+  `;
+}
 
-  const pedidos = appState.dataset?.pedidos || [];
-  const contas = appState.dataset?.contas || [];
+function renderContaToggle(flag, label) {
+  const checked = filterState.contas[flag] ? "checked" : "";
+  return `
+    <label class="filter-toggle">
+      <input type="checkbox" data-filter-toggle-flag="${flag}" ${checked}>
+      <span>${escapeHTML(label)}</span>
+    </label>
+  `;
+}
 
-  filterPanel.innerHTML = `
+function renderContaFilters(contas) {
+  const distinct = (field) => window.MoldeFilters.getDistinctValues(contas, field);
+  const pagoValue = filterState.contas.pago === true ? "true" : filterState.contas.pago === false ? "false" : "";
+  return `
     <div class="filter-panel-grid">
-      <label>Ano<input type="number" data-filter-field="year" value="${filterState.year ?? ""}" min="2020" max="2035"></label>
-      <label>Mês<input type="number" data-filter-field="month" value="${filterState.month ?? ""}" min="1" max="12"></label>
-      <label>Valor mínimo<input type="number" step="0.01" data-filter-field="valueMin" value="${filterState.valueMin ?? ""}"></label>
-      <label>Valor máximo<input type="number" step="0.01" data-filter-field="valueMax" value="${filterState.valueMax ?? ""}"></label>
+      ${renderPeriodFilterFields()}
+      <fieldset>
+        <legend>Contas</legend>
+        ${renderFilterDropdown("contas", "statusPagamento", "Status", distinct("status_pagamento"), filterState.contas.statusPagamento)}
+        ${renderFilterDropdown("contas", "fornecedor", "Fornecedor", distinct("fornecedor"), filterState.contas.fornecedor)}
+        ${renderFilterDropdown("contas", "classificacao", "Classificação", distinct("classificacao"), filterState.contas.classificacao)}
+        ${renderFilterDropdown("contas", "categoria", "Categoria", distinct("categoria"), filterState.contas.categoria)}
+        ${renderFilterDropdown("contas", "conta", "Conta", distinct("conta"), filterState.contas.conta)}
+        ${renderFilterDropdown("contas", "parcela", "Parcela", distinct("parcela"), filterState.contas.parcela)}
+        <label class="filter-field-label" for="filter-conta-pago">Pagamento</label>
+        <select id="filter-conta-pago" data-filter-conta-select="pago">
+          <option value="" ${pagoValue === "" ? "selected" : ""}>Todos</option>
+          <option value="true" ${pagoValue === "true" ? "selected" : ""}>Pago</option>
+          <option value="false" ${pagoValue === "false" ? "selected" : ""}>Não pago</option>
+        </select>
+      </fieldset>
+      <fieldset>
+        <legend>Situação de vencimento</legend>
+        <div class="filter-toggle-grid">
+          ${renderContaToggle("vencido", "Vencido")}
+          ${renderContaToggle("venceHoje", "Vence hoje")}
+          ${renderContaToggle("vence7", "Próximos 7 dias")}
+          ${renderContaToggle("vence30", "Próximos 30 dias")}
+          ${renderContaToggle("semValor", "Sem valor")}
+          ${renderContaToggle("semClassificacao", "Sem classificação")}
+          ${renderContaToggle("semConta", "Sem conta")}
+        </div>
+      </fieldset>
+    </div>
+    <div class="filter-panel-actions">
+      <button class="button button-outline" type="button" data-filter-clear>Limpar filtros</button>
+    </div>
+  `;
+}
+
+function renderExecutivoFilters(pedidos, contas) {
+  return `
+    <div class="filter-panel-grid">
+      ${renderPeriodFilterFields()}
       <fieldset>
         <legend>Pedidos</legend>
         ${renderFilterDropdown("pedidos", "situacaoGrupo", "Grupo", window.MoldeFilters.getDistinctValues(pedidos, "situacao_grupo"), filterState.pedidos.situacaoGrupo)}
@@ -413,6 +463,46 @@ function renderFilterPanelContent() {
       <button class="button button-outline" type="button" data-filter-clear>Limpar filtros</button>
     </div>
   `;
+}
+
+function renderFilterPanelContent(route = getRouteFromHash()) {
+  if (!filterPanel) {
+    return;
+  }
+  if (!hasDataset()) {
+    filterPanel.innerHTML = `<p class="helper-text">Carregue planilhas para filtrar dados.</p>`;
+    return;
+  }
+
+  const pedidos = appState.dataset?.pedidos || [];
+  const contas = appState.dataset?.contas || [];
+
+  if (route === "financeiro") {
+    filterPanel.innerHTML = renderContaFilters(contas);
+    return;
+  }
+
+  filterPanel.innerHTML = renderExecutivoFilters(pedidos, contas);
+}
+
+function isAnalyticalRoute(route) {
+  return ANALYTICAL_ROUTES.includes(route);
+}
+
+function updateFilterVisibility(route) {
+  const analytical = isAnalyticalRoute(route);
+  if (filterToggle) {
+    filterToggle.hidden = !analytical;
+  }
+  if (!analytical) {
+    if (filterPanel) {
+      filterPanel.hidden = true;
+    }
+    if (shell) {
+      shell.dataset.filterOpen = "false";
+    }
+    filterToggle?.setAttribute("aria-expanded", "false");
+  }
 }
 
 function mountBaseDadosTable() {
@@ -553,15 +643,24 @@ function renderEmptyPage(route) {
 function renderMetricCard(label, options = {}) {
   const classes = ["metric-card", options.warning ? "metric-card--warning" : ""].filter(Boolean).join(" ");
   const badge = options.badge ? `<span class="metric-card-badge">${escapeHTML(options.badge)}</span>` : "";
-  const subtitle = options.subtitle ? `<span class="metric-card-subtitle">${escapeHTML(options.subtitle)}</span>` : "";
+  const valueClass = ["metric-card-value", options.valueClass || ""].filter(Boolean).join(" ");
+  let subtitle = "";
+  if (options.subtitle || options.subtitleKey) {
+    const subtitleAttr = options.subtitleKey ? ` data-metric-subtitle="${options.subtitleKey}"` : "";
+    subtitle = `<span class="metric-card-subtitle"${subtitleAttr}>${escapeHTML(options.subtitle || "—")}</span>`;
+  }
   return `
     <article class="${classes}">
       <p class="metric-card-label">${escapeHTML(label)}</p>
       ${badge}
-      <p class="metric-card-value" data-metric="${options.key || ""}">—</p>
+      <p class="${valueClass}" data-metric="${options.key || ""}">—</p>
       ${subtitle}
     </article>
   `;
+}
+
+function hasContasData() {
+  return Boolean(appState.dataset && appState.dataset.contas?.length);
 }
 
 function renderMetricBlock(title, cardsHtml, options = {}) {
@@ -653,46 +752,6 @@ function renderExecutivoPage(route) {
   `;
 }
 
-function formatExecutiveDate(value) {
-  if (!value) {
-    return "—";
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : shortDateFormatter.format(date);
-}
-
-function renderExceptionTable(rows, emptyMessage) {
-  if (!rows.length) {
-    return `<p class="executive-exception-empty">${escapeHTML(emptyMessage)}</p>`;
-  }
-  return `
-    <table class="data-table executive-exception-table">
-      <thead>
-        <tr>
-          <th scope="col">Fornecedor</th>
-          <th scope="col">Vencimento</th>
-          <th scope="col" class="text-right">Valor</th>
-          <th scope="col">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map(
-            (row) => `
-              <tr>
-                <td>${escapeHTML(row.fornecedor || "—")}</td>
-                <td>${formatExecutiveDate(row.data_vencimento)}</td>
-                <td class="text-right">${window.MoldeMetrics?.formatCurrency(row.valor) || "—"}</td>
-                <td>${escapeHTML(row.status_pagamento || "—")}</td>
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
-}
-
 function disposeExecutiveCharts() {
   if (window.MoldeCharts && executiveChartInstances.length) {
     window.MoldeCharts.disposeExecutiveCharts(executiveChartInstances);
@@ -752,20 +811,31 @@ function mountExecutivoDashboard() {
     executiveChartInstances = window.MoldeCharts.renderExecutiveCharts(containers, pedidos, contas, theme);
   }
 
-  const overdueEl = document.querySelector('[data-exception="overdue"]');
-  const upcomingEl = document.querySelector('[data-exception="upcoming"]');
-  if (overdueEl) {
-    overdueEl.innerHTML = renderExceptionTable(
-      window.MoldeMetrics.getOverdueContas(contas),
-      "Nenhuma conta vencida no recorte atual."
-    );
+  mountExecutiveExceptionTable(
+    '[data-exception="overdue"]',
+    window.MoldeMetrics.getOverdueContasAll(contas),
+    "Nenhuma conta vencida no recorte atual."
+  );
+  mountExecutiveExceptionTable(
+    '[data-exception="upcoming"]',
+    window.MoldeMetrics.getUpcomingContasAll(contas),
+    "Nenhum vencimento nos próximos 7 dias."
+  );
+}
+
+function mountExecutiveExceptionTable(selector, rows, emptyMessage) {
+  const container = document.querySelector(selector);
+  if (!container) {
+    return;
   }
-  if (upcomingEl) {
-    upcomingEl.innerHTML = renderExceptionTable(
-      window.MoldeMetrics.getUpcomingContas(contas),
-      "Nenhum vencimento nos próximos 7 dias."
-    );
+  if (!rows.length) {
+    container.innerHTML = `<p class="executive-exception-empty">${escapeHTML(emptyMessage)}</p>`;
+    return;
   }
+  window.MoldeTables.renderVirtualTable(container, {
+    rows,
+    columns: FINANCE_TABLE_COLUMNS.base
+  });
 }
 
 function scheduleExecutiveChartResize() {
@@ -773,15 +843,240 @@ function scheduleExecutiveChartResize() {
     clearTimeout(executiveResizeTimer);
   }
   executiveResizeTimer = setTimeout(() => {
-    if (getRouteFromHash() !== "executivo") {
-      return;
-    }
-    executiveChartInstances.forEach((instance) => {
+    const route = getRouteFromHash();
+    const instances = route === "executivo" ? executiveChartInstances : route === "financeiro" ? financeChartInstances : [];
+    instances.forEach((instance) => {
       if (instance && typeof instance.resize === "function") {
         instance.resize();
       }
     });
   }, 150);
+}
+
+const FINANCE_TABLE_COLUMNS = {
+  base: [
+    { key: "fornecedor", label: "Fornecedor", type: "text", getValue: (r) => r.fornecedor },
+    { key: "data_vencimento", label: "Vencimento", type: "date", getValue: (r) => r.data_vencimento },
+    { key: "valor", label: "Valor", type: "currency", getValue: (r) => r.valor },
+    { key: "status_pagamento", label: "Status", type: "badge", getValue: (r) => r.status_pagamento }
+  ],
+  overdue: [
+    { key: "fornecedor", label: "Fornecedor", type: "text", getValue: (r) => r.fornecedor },
+    { key: "data_vencimento", label: "Vencimento", type: "date", getValue: (r) => r.data_vencimento },
+    { key: "valor", label: "Valor", type: "currency", getValue: (r) => r.valor },
+    { key: "dias_atraso", label: "Dias atraso", type: "text", getValue: (r) => r.dias_atraso },
+    { key: "status_pagamento", label: "Status", type: "badge", getValue: (r) => r.status_pagamento }
+  ],
+  future: [
+    { key: "fornecedor", label: "Fornecedor", type: "text", getValue: (r) => r.fornecedor },
+    { key: "mes_vencimento", label: "Mês", type: "text", getValue: (r) => r.mes_vencimento },
+    { key: "data_vencimento", label: "Vencimento", type: "date", getValue: (r) => r.data_vencimento },
+    { key: "valor", label: "Valor", type: "currency", getValue: (r) => r.valor },
+    { key: "status_pagamento", label: "Status", type: "badge", getValue: (r) => r.status_pagamento }
+  ]
+};
+
+const FINANCE_KPI_BLOCKS = [
+  {
+    title: "Posição",
+    cards: [
+      { label: "Total de contas", key: "totalContas" },
+      { label: "Total pago", key: "totalPago" },
+      { label: "Total aberto", key: "totalAberto" },
+      { label: "Total vencido", key: "totalVencido" }
+    ]
+  },
+  {
+    title: "Vencimentos",
+    cards: [
+      { label: "Vence hoje", key: "venceHoje" },
+      { label: "Vence em 7 dias", key: "vence7" },
+      { label: "Vence em 30 dias", key: "vence30" }
+    ]
+  },
+  {
+    title: "Análise",
+    cards: [
+      { label: "Média mensal de despesas", key: "mediaMensalDespesas" },
+      { label: "Maior fornecedor do mês", key: "maiorFornecedorNome", valueClass: "metric-card-value--name", subtitleKey: "maiorFornecedorValor" },
+      { label: "Maior classificação do mês", key: "maiorClassificacaoNome", valueClass: "metric-card-value--name", subtitleKey: "maiorClassificacaoValor" },
+      { label: "% despesas fixas", key: "percentualFixas" },
+      { label: "% despesas variáveis", key: "percentualVariaveis" }
+    ]
+  }
+];
+
+const FINANCE_CHART_PANELS = [
+  { id: "expenses-month", title: "Despesas por mês" },
+  { id: "paid-open-month", title: "Pago × aberto por mês" },
+  { id: "expenses-category", title: "Despesas por categoria" },
+  { id: "expenses-classification", title: "Despesas por classificação" },
+  { id: "top-suppliers", title: "Top fornecedores" },
+  { id: "due-heatmap", title: "Calendário de vencimentos", wide: true },
+  { id: "supplier-abc", title: "Curva ABC de fornecedores", wide: true },
+  { id: "fixed-evolution", title: "Evolução das despesas fixas" },
+  { id: "variable-evolution", title: "Evolução das despesas variáveis" },
+  { id: "bank-account", title: "Saídas por conta bancária" }
+];
+
+const FINANCE_TABLES = [
+  { id: "overdue", title: "Contas vencidas", columns: "overdue", empty: "Nenhuma conta vencida no recorte atual." },
+  { id: "upcoming", title: "Próximos 7 dias", columns: "base", empty: "Nenhum vencimento nos próximos 7 dias." },
+  { id: "no-value", title: "Contas sem valor", columns: "base", empty: "Nenhuma conta sem valor no recorte atual." },
+  { id: "no-class", title: "Contas sem classificação", columns: "base", empty: "Nenhuma conta sem classificação no recorte atual." },
+  { id: "paid-no-date", title: "Pagas sem data de pagamento", columns: "base", empty: "Nenhuma conta paga sem data de pagamento." },
+  { id: "future", title: "Lançamentos futuros por mês", columns: "future", empty: "Nenhum lançamento futuro no recorte atual." }
+];
+
+function renderFinanceiroPage(route) {
+  if (!hasContasData()) {
+    return renderEmptyPage(route);
+  }
+
+  const kpiBlocks = FINANCE_KPI_BLOCKS.map((block) => {
+    const cards = block.cards
+      .map((card) => renderMetricCard(card.label, {
+        key: card.key,
+        valueClass: card.valueClass,
+        subtitleKey: card.subtitleKey
+      }))
+      .join("");
+    return renderMetricBlock(block.title, cards);
+  }).join("");
+
+  const chartPanels = FINANCE_CHART_PANELS
+    .map(
+      (panel) => `
+        <article class="chart-panel ${panel.wide ? "chart-panel--wide" : ""}">
+          <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+          <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+        </article>
+      `
+    )
+    .join("");
+
+  const tables = FINANCE_TABLES
+    .map(
+      (table) => `
+        <article class="card">
+          <h3 class="chart-panel-title">${escapeHTML(table.title)}</h3>
+          <div data-fin-table="${table.id}"></div>
+        </article>
+      `
+    )
+    .join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${kpiBlocks}
+    <section class="finance-charts-grid" aria-label="Gráficos financeiros">
+      ${chartPanels}
+    </section>
+    <section class="finance-tables-grid" aria-label="Tabelas de exceção financeiras">
+      ${tables}
+    </section>
+  `;
+}
+
+function disposeFinanceCharts() {
+  if (window.MoldeCharts && financeChartInstances.length) {
+    window.MoldeCharts.disposeFinanceCharts(financeChartInstances);
+  }
+  financeChartInstances = [];
+}
+
+function mountFinanceTable(id, rows, columnsKey, emptyMessage) {
+  const container = document.querySelector(`[data-fin-table="${id}"]`);
+  if (!container) {
+    return;
+  }
+  if (!rows.length) {
+    container.innerHTML = `<p class="executive-exception-empty">${escapeHTML(emptyMessage)}</p>`;
+    return;
+  }
+  window.MoldeTables.renderVirtualTable(container, {
+    rows,
+    columns: FINANCE_TABLE_COLUMNS[columnsKey]
+  });
+}
+
+function mountFinanceiroDashboard() {
+  if (getRouteFromHash() !== "financeiro" || !hasContasData() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const contas = window.MoldeFilters.applyFilters(appState.dataset.contas || [], "contas", filterState);
+  const metrics = window.MoldeMetrics;
+  const kpis = metrics.computeFinanceKpis(contas);
+  const format = metrics.formatCurrency;
+  const percent = metrics.formatPercent;
+
+  const metricMap = {
+    totalContas: format(kpis.totalContas),
+    totalPago: format(kpis.totalPago),
+    totalAberto: format(kpis.totalAberto),
+    totalVencido: format(kpis.totalVencido),
+    venceHoje: format(kpis.venceHoje),
+    vence7: format(kpis.vence7),
+    vence30: format(kpis.vence30),
+    mediaMensalDespesas: format(kpis.mediaMensalDespesas),
+    maiorFornecedorNome: kpis.maiorFornecedor.nome,
+    maiorClassificacaoNome: kpis.maiorClassificacao.nome,
+    percentualFixas: percent(kpis.percentualFixas),
+    percentualVariaveis: percent(kpis.percentualVariaveis)
+  };
+  const subtitleMap = {
+    maiorFornecedorValor: format(kpis.maiorFornecedor.valor),
+    maiorClassificacaoValor: format(kpis.maiorClassificacao.valor)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+      if (key === "maiorFornecedorNome" || key === "maiorClassificacaoNome") {
+        element.title = metricMap[key];
+      }
+    }
+  });
+  document.querySelectorAll("[data-metric-subtitle]").forEach((element) => {
+    const key = element.dataset.metricSubtitle;
+    if (subtitleMap[key] !== undefined) {
+      element.textContent = subtitleMap[key];
+    }
+  });
+
+  disposeFinanceCharts();
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      expensesMonth: document.querySelector('[data-chart="expenses-month"]'),
+      paidOpenMonth: document.querySelector('[data-chart="paid-open-month"]'),
+      expensesCategory: document.querySelector('[data-chart="expenses-category"]'),
+      expensesClassification: document.querySelector('[data-chart="expenses-classification"]'),
+      topSuppliers: document.querySelector('[data-chart="top-suppliers"]'),
+      dueHeatmap: document.querySelector('[data-chart="due-heatmap"]'),
+      supplierAbc: document.querySelector('[data-chart="supplier-abc"]'),
+      fixedEvolution: document.querySelector('[data-chart="fixed-evolution"]'),
+      variableEvolution: document.querySelector('[data-chart="variable-evolution"]'),
+      bankAccount: document.querySelector('[data-chart="bank-account"]')
+    };
+    financeChartInstances = window.MoldeCharts.renderFinanceCharts(containers, contas, theme);
+  }
+
+  mountFinanceTable("overdue", metrics.getOverdueContasAll(contas), "overdue", FINANCE_TABLES[0].empty);
+  mountFinanceTable("upcoming", metrics.getUpcomingContasAll(contas), "base", FINANCE_TABLES[1].empty);
+  mountFinanceTable("no-value", metrics.getContasSemValor(contas), "base", FINANCE_TABLES[2].empty);
+  mountFinanceTable("no-class", metrics.getContasSemClassificacao(contas), "base", FINANCE_TABLES[3].empty);
+  mountFinanceTable("paid-no-date", metrics.getContasPagasSemData(contas), "base", FINANCE_TABLES[4].empty);
+  mountFinanceTable("future", metrics.getContasFuturas(contas), "future", FINANCE_TABLES[5].empty);
 }
 
 function renderFindingItem(finding, severityLabel, severityClass) {
@@ -1254,6 +1549,19 @@ function attachGlobalInteractions() {
   });
 
   filterPanel?.addEventListener("change", (event) => {
+    const toggleFlag = event.target.closest("[data-filter-toggle-flag]");
+    if (toggleFlag) {
+      filterState.contas[toggleFlag.dataset.filterToggleFlag] = toggleFlag.checked;
+      onFilterStateChanged();
+      return;
+    }
+    const contaSelect = event.target.closest("[data-filter-conta-select]");
+    if (contaSelect) {
+      const field = contaSelect.dataset.filterContaSelect;
+      filterState.contas[field] = contaSelect.value === "" ? null : contaSelect.value === "true";
+      onFilterStateChanged();
+      return;
+    }
     const check = event.target.closest("[data-filter-check]");
     if (check) {
       const [group, field] = check.dataset.filterCheck.split(":");
@@ -1346,6 +1654,9 @@ function onFilterStateChanged() {
   }
   if (getRouteFromHash() === "executivo" && canContinueToDashboards()) {
     mountExecutivoDashboard();
+  }
+  if (getRouteFromHash() === "financeiro" && hasContasData()) {
+    mountFinanceiroDashboard();
   }
 }
 
@@ -1454,10 +1765,12 @@ function syncSidebarAccessibility() {
 
 function renderCurrentRoute(options = {}) {
   disposeExecutiveCharts();
+  disposeFinanceCharts();
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
   updateActiveLink(routeName);
+  updateFilterVisibility(routeName);
   pageView.innerHTML = route.render ? route.render(route) : renderEmptyPage(route);
   attachRouteInteractions();
   document.title = `${route.title} - Molde Momentos Dashboard Local`;
@@ -1483,6 +1796,11 @@ function renderCurrentRoute(options = {}) {
 
   if (routeName === "executivo" && canContinueToDashboards()) {
     mountExecutivoDashboard();
+  }
+
+  if (routeName === "financeiro" && hasContasData()) {
+    renderFilterPanelContent(routeName);
+    mountFinanceiroDashboard();
   }
 }
 

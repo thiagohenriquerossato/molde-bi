@@ -216,9 +216,214 @@
     disposeInstances(instances);
   }
 
+  function lineOption(colors, categories, name, values) {
+    return {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 56, right: 16, top: 32, bottom: 32 },
+      tooltip: baseTooltip(),
+      legend: { data: [name] },
+      xAxis: { type: "category", data: categories },
+      yAxis: { type: "value" },
+      series: [{ name, type: "line", smooth: true, data: values }]
+    };
+  }
+
+  function horizontalBarOption(colors, entries) {
+    const sorted = [...entries].reverse();
+    return {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 140, right: 24, top: 16, bottom: 32 },
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value) => formatBrl(value) },
+      xAxis: { type: "value" },
+      yAxis: { type: "category", data: sorted.map((item) => item.label) },
+      series: [{ type: "bar", data: sorted.map((item) => item.value) }]
+    };
+  }
+
+  function donutOption(colors, entries) {
+    return {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      tooltip: { trigger: "item", valueFormatter: (value) => formatBrl(value) },
+      legend: { orient: "vertical", left: "left", top: "middle", type: "scroll" },
+      series: [
+        {
+          type: "pie",
+          radius: ["40%", "70%"],
+          data: entries.map((item) => ({ name: item.label, value: item.value }))
+        }
+      ]
+    };
+  }
+
+  function renderFinanceCharts(containers, contas, theme) {
+    const metrics = window.MoldeMetrics;
+    if (!metrics || !containers) {
+      return [];
+    }
+
+    const colors = getChartColors();
+    const instances = [];
+    const push = (element, option) => {
+      if (element) {
+        instances.push(initChart(element, option, theme));
+      }
+    };
+
+    const expenses = metrics.aggregateExpensesByMonth(contas);
+    push(
+      containers.expensesMonth,
+      lineOption(
+        colors,
+        expenses.map((item) => formatMonthLabel(item.month)),
+        "Despesas",
+        expenses.map((item) => item.valor)
+      )
+    );
+
+    const paidOpen = metrics.aggregatePaidOpenByMonth(contas);
+    push(containers.paidOpenMonth, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: [colors[1], colors[2]],
+      grid: { left: 56, right: 16, top: 32, bottom: 32 },
+      tooltip: baseTooltip(),
+      legend: { data: ["Pago", "Aberto"] },
+      xAxis: { type: "category", data: paidOpen.map((item) => formatMonthLabel(item.month)) },
+      yAxis: { type: "value" },
+      series: [
+        { name: "Pago", type: "bar", stack: "total", data: paidOpen.map((item) => item.pago) },
+        { name: "Aberto", type: "bar", stack: "total", data: paidOpen.map((item) => item.aberto) }
+      ]
+    });
+
+    push(containers.expensesCategory, donutOption(colors, metrics.expensesByCategory(contas)));
+    push(containers.expensesClassification, horizontalBarOption(colors, metrics.expensesByClassification(contas, 12)));
+    push(containers.topSuppliers, horizontalBarOption(colors, metrics.topSuppliers(contas, 15)));
+
+    const heatmap = metrics.dueHeatmapMatrix(contas);
+    if (containers.dueHeatmap) {
+      const maxValue = heatmap.data.reduce((max, cell) => Math.max(max, cell[2]), 0);
+      push(containers.dueHeatmap, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        tooltip: {
+          position: "top",
+          formatter: (params) => {
+            const [dayIndex, monthIndex, valor] = params.value;
+            const month = formatMonthLabel(heatmap.months[monthIndex]);
+            return `${month} · dia ${dayIndex + 1}<br/>${formatBrl(valor)}`;
+          }
+        },
+        grid: { left: 72, right: 24, top: 16, bottom: 56 },
+        xAxis: {
+          type: "category",
+          data: Array.from({ length: 31 }, (_, index) => String(index + 1)),
+          splitArea: { show: true }
+        },
+        yAxis: {
+          type: "category",
+          data: heatmap.months.map((month) => formatMonthLabel(month)),
+          splitArea: { show: true }
+        },
+        visualMap: {
+          min: 0,
+          max: maxValue || 1,
+          calculable: true,
+          orient: "horizontal",
+          left: "center",
+          bottom: 0,
+          inRange: { color: [colors[0] + "22", colors[0]] }
+        },
+        series: [
+          {
+            type: "heatmap",
+            data: heatmap.data,
+            emphasis: { itemStyle: { shadowBlur: 6 } }
+          }
+        ]
+      });
+    }
+
+    const abc = metrics.supplierAbc(contas, 15);
+    if (containers.supplierAbc) {
+      push(containers.supplierAbc, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[3], colors[2]],
+        grid: { left: 56, right: 56, top: 32, bottom: 72 },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          formatter: (params) => {
+            const bar = params.find((item) => item.seriesName === "Valor");
+            const line = params.find((item) => item.seriesName === "% acumulado");
+            const parts = [params[0].axisValue];
+            if (bar) {
+              parts.push(`Valor: ${formatBrl(bar.value)}`);
+            }
+            if (line) {
+              parts.push(`Acumulado: ${Number(line.value).toFixed(1).replace(".", ",")}%`);
+            }
+            return parts.join("<br/>");
+          }
+        },
+        legend: { data: ["Valor", "% acumulado"] },
+        xAxis: {
+          type: "category",
+          data: abc.items.map((item) => item.label),
+          axisLabel: { interval: 0, rotate: 40 }
+        },
+        yAxis: [
+          { type: "value" },
+          { type: "value", min: 0, max: 100, axisLabel: { formatter: "{value}%" } }
+        ],
+        series: [
+          { name: "Valor", type: "bar", data: abc.items.map((item) => item.value) },
+          {
+            name: "% acumulado",
+            type: "line",
+            yAxisIndex: 1,
+            smooth: true,
+            data: abc.items.map((item) => Number(item.acumuladoPct.toFixed(1)))
+          }
+        ]
+      });
+    }
+
+    const fixedVariable = metrics.aggregateFixedVariableByMonth(contas);
+    const monthLabels = fixedVariable.map((item) => formatMonthLabel(item.month));
+    push(containers.fixedEvolution, lineOption([colors[1]], monthLabels, "Despesas fixas", fixedVariable.map((item) => item.fixa)));
+    push(containers.variableEvolution, lineOption([colors[3]], monthLabels, "Despesas variáveis", fixedVariable.map((item) => item.variavel)));
+
+    push(containers.bankAccount, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 56, right: 16, top: 16, bottom: 56 },
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value) => formatBrl(value) },
+      xAxis: { type: "category", data: metrics.expensesByBankAccount(contas).map((item) => item.label), axisLabel: { interval: 0, rotate: 30 } },
+      yAxis: { type: "value" },
+      series: [{ type: "bar", data: metrics.expensesByBankAccount(contas).map((item) => item.value) }]
+    });
+
+    return instances.filter(Boolean);
+  }
+
+  function disposeFinanceCharts(instances) {
+    disposeInstances(instances);
+  }
+
   window.MoldeCharts = {
     getChartColors,
     renderExecutiveCharts,
-    disposeExecutiveCharts
+    disposeExecutiveCharts,
+    renderFinanceCharts,
+    disposeFinanceCharts
   };
 })();

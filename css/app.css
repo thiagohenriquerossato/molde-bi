@@ -1129,6 +1129,35 @@ input:disabled,
   color: var(--muted-foreground);
 }
 
+.finance-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.chart-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.chart-panel--wide .chart-canvas {
+  height: 340px;
+}
+
+.finance-tables-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.metric-card-value--name {
+  font-size: 1.125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .text-right {
   text-align: right;
 }
@@ -1169,7 +1198,9 @@ input:disabled,
   }
 
   .executive-charts-grid,
-  .executive-exceptions {
+  .executive-exceptions,
+  .finance-charts-grid,
+  .finance-tables-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -106,7 +106,11 @@
     if (!venc) {
       return "Lançamento incompleto";
     }
-    const vencDate = new Date(venc.getFullYear(), venc.getMonth(), venc.getDate());
+    const vencParsed = venc instanceof Date ? venc : new Date(venc);
+    if (Number.isNaN(vencParsed.getTime())) {
+      return "Lançamento incompleto";
+    }
+    const vencDate = new Date(vencParsed.getFullYear(), vencParsed.getMonth(), vencParsed.getDate());
     const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const diff = diffDays(vencDate, todayDate);
     if (diff < 0) {
@@ -129,7 +133,11 @@
     if (!validationReport) {
       return index;
     }
-    [...(validationReport.criticalErrors || []), ...(validationReport.warnings || [])].forEach((finding) => {
+    [
+      ...(validationReport.blockers || []),
+      ...(validationReport.alerts || []),
+      ...(validationReport.warnings || [])
+    ].forEach((finding) => {
       if (!finding.excelRow) {
         return;
       }

@@ -58,7 +58,8 @@
           reason: "Pedido vazio",
           message: "Linha ignorada por pedido vazio.",
           excelRow: row.excelRow,
-          businessId: "(sem pedido)"
+          businessId: "(sem pedido)",
+          severity: "warning"
         });
         return;
       }
@@ -85,7 +86,8 @@
           reason: "Parada em TOTAL",
           message: "Leitura interrompida na linha TOTAL.",
           excelRow: row.excelRow,
-          businessId: "(total)"
+          businessId: "(total)",
+          severity: "warning"
         });
         stop = true;
         return;

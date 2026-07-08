@@ -251,8 +251,9 @@ function hydrateImportStateFromMeta(snapshot) {
       },
       validationReport: {
         status: meta.validationStatus || "valid",
-        summary: { criticalCount: 0, warningCount: 0, validRowCount: meta.rowCount || 0 },
-        criticalErrors: [],
+        summary: { blockerCount: 0, alertCount: 0, warningCount: 0, excludedCount: 0, validRowCount: meta.rowCount || 0 },
+        blockers: [],
+        alerts: [],
         warnings: []
       },
       error: ""
@@ -450,9 +451,9 @@ function getValidationCardBadge(kind) {
       return { text: "Válido", className: "badge-success" };
     }
     if (state.validationReport.status === "valid_with_warnings") {
-      return { text: "Com informações", className: "badge-warning" };
+      return { text: "Importado com alertas", className: "badge-warning" };
     }
-    return { text: "Inválido", className: "badge-danger" };
+    return { text: "Bloqueado", className: "badge-danger" };
   }
   return null;
 }
@@ -495,29 +496,29 @@ function renderFindingItem(finding, severityLabel, severityClass) {
   `;
 }
 
-function renderWarningsList(kind, warnings) {
-  if (!warnings.length) {
+function renderFindingsGroup(kind, groupId, findings, options) {
+  if (!findings.length) {
     return "";
   }
 
-  const isExpanded = expandedWarningBlocks.has(kind);
-  const visible = isExpanded ? warnings : warnings.slice(0, 5);
-  const hiddenCount = Math.max(warnings.length - 5, 0);
+  const groupKey = `${kind}:${groupId}`;
+  const isExpanded = expandedWarningBlocks.has(groupKey);
+  const visible = isExpanded ? findings : findings.slice(0, 5);
 
   return `
-    <div class="validation-findings validation-findings--warnings">
-      <h4>Alertas (${warnings.length})</h4>
+    <div class="validation-findings ${options.groupClass}">
+      <h4>${options.title} (${findings.length})</h4>
       <ul>
-        ${visible.map((finding) => renderFindingItem(finding, "Alerta", "validation-finding--warning")).join("")}
+        ${visible.map((finding) => renderFindingItem(finding, options.label, options.itemClass)).join("")}
       </ul>
-      ${warnings.length > 5 ? `
+      ${findings.length > 5 ? `
         <button
           class="button button-outline validation-expand"
           type="button"
-          data-validation-expand="${kind}"
+          data-validation-expand="${groupKey}"
           aria-expanded="${isExpanded}"
         >
-          ${isExpanded ? "Recolher" : `Ver todos (${warnings.length})`}
+          ${isExpanded ? "Recolher" : `Ver todos (${findings.length})`}
         </button>
       ` : ""}
     </div>
@@ -564,10 +565,8 @@ function renderValidationBlock(kind) {
   const blockBadge = report.status === "valid"
     ? { text: "Válida", className: "badge-success" }
     : report.status === "valid_with_warnings"
-      ? { text: "Válida com alertas", className: "badge-warning" }
-      : { text: "Inválida", className: "badge-danger" };
-
-  const criticalItems = report.criticalErrors.slice(0, 10);
+      ? { text: "Importada com alertas", className: "badge-warning" }
+      : { text: "Bloqueada", className: "badge-danger" };
 
   return `
     <article class="validation-block" data-validation-block="${kind}">
@@ -576,19 +575,29 @@ function renderValidationBlock(kind) {
         <span class="badge ${blockBadge.className}">${blockBadge.text}</span>
       </div>
       <div class="validation-summary">
-        <span><strong>${report.summary.criticalCount}</strong> erros críticos</span>
-        <span><strong>${report.summary.warningCount}</strong> alertas</span>
-        <span><strong>${report.summary.validRowCount}</strong> linhas válidas</span>
+        ${report.summary.blockerCount ? `<span><strong>${report.summary.blockerCount}</strong> erros estruturais</span>` : ""}
+        <span><strong>${report.summary.alertCount}</strong> alertas</span>
+        <span><strong>${report.summary.warningCount}</strong> avisos</span>
+        <span><strong>${report.summary.validRowCount}</strong> linhas importadas</span>
       </div>
-      ${criticalItems.length ? `
-        <div class="validation-findings validation-findings--critical">
-          <h4>Erros críticos (${report.summary.criticalCount})</h4>
-          <ul>
-            ${criticalItems.map((finding) => renderFindingItem(finding, "Erro crítico", "validation-finding--critical")).join("")}
-          </ul>
-        </div>
-      ` : ""}
-      ${renderWarningsList(kind, report.warnings)}
+      ${renderFindingsGroup(kind, "blockers", report.blockers, {
+        title: "Erros estruturais",
+        label: "Estrutural",
+        groupClass: "validation-findings--critical",
+        itemClass: "validation-finding--critical"
+      })}
+      ${renderFindingsGroup(kind, "alerts", report.alerts, {
+        title: "Alertas",
+        label: "Alerta",
+        groupClass: "validation-findings--warnings",
+        itemClass: "validation-finding--warning"
+      })}
+      ${renderFindingsGroup(kind, "warnings", report.warnings, {
+        title: "Avisos",
+        label: "Aviso",
+        groupClass: "validation-findings--info",
+        itemClass: "validation-finding--info"
+      })}
       ${report.status === "invalid" ? `
         <button class="button button-outline" type="button" data-fix-upload="${kind}">Corrigir planilha</button>
       ` : ""}
@@ -627,7 +636,7 @@ function renderDashboardCta() {
         Continuar para dashboards
       </button>
       <p class="helper-text validation-cta-helper" ${enabled ? "hidden" : ""}>
-        Corrija os erros críticos em Pedidos e Contas para continuar.
+        Corrija os erros estruturais em Pedidos e Contas para continuar. Alertas e avisos não bloqueiam.
       </p>
     </div>
   `;
@@ -729,13 +738,15 @@ function getUploadCardView(kind) {
       badgeClass: validationBadge.className,
       buttonText: "Substituir planilha",
       helperText: report?.status === "invalid"
-        ? "Corrija os erros críticos e substitua a planilha."
-        : "Validação concluída para esta fonte.",
+        ? "Corrija os erros estruturais e substitua a planilha."
+        : "Importação concluída para esta fonte.",
       fileName: metadata.fileName,
       metadataHTML: createMetadataHTML(metadata),
       errorHTML: "",
-      statusText: report?.status === "invalid" ? "Planilha inválida." : "Planilha validada.",
-      previewText: `${report?.summary.criticalCount || 0} críticos, ${report?.summary.warningCount || 0} alertas`,
+      statusText: report?.status === "invalid" ? "Planilha bloqueada." : "Planilha importada.",
+      previewText: report?.status === "invalid"
+        ? `${report?.summary.blockerCount || 0} erros estruturais`
+        : `${report?.summary.alertCount || 0} alertas, ${report?.summary.warningCount || 0} avisos`,
       cardClass: report?.status === "invalid" ? "upload-card-highlight" : "",
       disabledAttribute: ""
     };
@@ -1028,11 +1039,11 @@ function attachRouteInteractions() {
 
   document.querySelectorAll("[data-validation-expand]").forEach((trigger) => {
     trigger.addEventListener("click", () => {
-      const kind = trigger.dataset.validationExpand;
-      if (expandedWarningBlocks.has(kind)) {
-        expandedWarningBlocks.delete(kind);
+      const groupKey = trigger.dataset.validationExpand;
+      if (expandedWarningBlocks.has(groupKey)) {
+        expandedWarningBlocks.delete(groupKey);
       } else {
-        expandedWarningBlocks.add(kind);
+        expandedWarningBlocks.add(groupKey);
       }
       renderCurrentRoute({ preserveFocus: true });
     });

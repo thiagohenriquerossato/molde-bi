@@ -628,6 +628,12 @@ input:disabled,
   color: var(--foreground);
 }
 
+.validation-finding--info {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted-foreground) 8%, var(--card));
+  color: var(--muted-foreground);
+}
+
 .validation-expand {
   justify-self: start;
 }

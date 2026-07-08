@@ -3,10 +3,14 @@
   const cleaners = () => window.MoldeCleaners;
   const validators = () => window.MoldeValidators;
 
-  function buildReport(kind, criticalErrors, warnings, validRowCount) {
-    const status = criticalErrors.length > 0
+  function buildReport(kind, findings, validRowCount) {
+    const blockers = findings.filter((item) => item.severity === "blocker");
+    const alerts = findings.filter((item) => item.severity === "alert");
+    const warnings = findings.filter((item) => item.severity !== "blocker" && item.severity !== "alert");
+
+    const status = blockers.length > 0
       ? "invalid"
-      : warnings.length > 0
+      : alerts.length > 0 || warnings.length > 0
         ? "valid_with_warnings"
         : "valid";
 
@@ -14,12 +18,14 @@
       kind,
       status,
       summary: {
-        criticalCount: criticalErrors.length,
+        blockerCount: blockers.length,
+        alertCount: alerts.length,
         warningCount: warnings.length,
         excludedCount: warnings.filter((item) => item.ruleId === "NRM-01" || item.ruleId === "NRM-02").length,
         validRowCount
       },
-      criticalErrors,
+      blockers,
+      alerts,
       warnings
     };
   }
@@ -36,16 +42,17 @@
           ruleId: "VAL-01",
           message: "Planilha de pedidos sem abas legíveis.",
           excelRow: 1,
-          businessId: "Pedidos"
+          businessId: "Pedidos",
+          severity: "blocker"
         }
-      ], [], 0);
+      ], 0);
     }
 
     const worksheet = workbook.Sheets[sheetName];
     const matrix = getWorksheetMatrix(worksheet);
     const headerRowValues = matrix[schemas().PEDIDOS_HEADER_ROW - 1] || [];
     const headerIndex = schemas().buildHeaderIndex(headerRowValues);
-    const criticalErrors = validators().validatePedidosStructure(headerIndex);
+    const structureErrors = validators().validatePedidosStructure(headerIndex);
 
     const dataRows = cleaners()
       .worksheetToRows(worksheet, { startRow: schemas().PEDIDOS_HEADER_ROW + 1 })
@@ -56,12 +63,11 @@
       }));
 
     const cleaned = cleaners().cleanPedidosRows(dataRows);
-    const rowErrors = validators().validatePedidosRows(cleaned.rows);
+    const rowAlerts = validators().validatePedidosRows(cleaned.rows);
 
     return buildReport(
       "pedidos",
-      [...criticalErrors, ...rowErrors],
-      cleaned.warnings,
+      [...structureErrors, ...rowAlerts, ...cleaned.warnings],
       cleaned.rows.length
     );
   }
@@ -69,8 +75,7 @@
   function validateContas(workbook) {
     const sheetNames = Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
     const monthlySheets = schemas().getContasMonthlySheets(sheetNames);
-    const criticalErrors = validators().validateContasStructure(monthlySheets, workbook);
-    const warnings = [];
+    const findings = validators().validateContasStructure(monthlySheets, workbook);
     const allRecords = [];
 
     monthlySheets.forEach((sheetName) => {
@@ -86,48 +91,49 @@
         }));
 
       const cleaned = cleaners().cleanContasSheetRows(dataRows);
-      warnings.push(...cleaned.warnings);
+      findings.push(...cleaned.warnings);
 
       const { expectedMonth, expectedYear } = schemas().getExpectedMonthYearFromSheetName(sheetName);
       const recordsWithSheet = cleaned.rows.map((row) => ({ ...row, sheetName }));
       allRecords.push(...recordsWithSheet);
-      criticalErrors.push(...validators().validateContasRows(recordsWithSheet, sheetName, expectedMonth, expectedYear));
+      findings.push(...validators().validateContasRows(recordsWithSheet, sheetName, expectedMonth, expectedYear));
     });
 
-    criticalErrors.push(...validators().validateContasSimilarSpellings(allRecords));
+    findings.push(...validators().validateContasSimilarSpellings(allRecords));
 
-    return buildReport("contas", criticalErrors, warnings, allRecords.length);
+    return buildReport("contas", findings, allRecords.length);
   }
 
   function validateIndicadores(workbook) {
     const sheetName = schemas().getIndicadoresSheetName(workbook);
-    const criticalErrors = [];
-    const warnings = [];
+    const findings = [];
 
     if (!sheetName) {
-      criticalErrors.push({
+      findings.push({
         ruleId: "IND-STRUCT",
         message: "Planilha de indicadores sem abas legíveis.",
         excelRow: 1,
-        businessId: "Indicadores"
+        businessId: "Indicadores",
+        severity: "blocker"
       });
-      return buildReport("indicadores", criticalErrors, warnings, 0);
+      return buildReport("indicadores", findings, 0);
     }
 
     const worksheet = workbook.Sheets[sheetName];
     const matrix = getWorksheetMatrix(worksheet);
     const headerRow = matrix[0] || [];
     if (!headerRow.some((cell) => String(cell ?? "").trim())) {
-      criticalErrors.push({
+      findings.push({
         ruleId: "IND-STRUCT",
         message: `Aba ${sheetName} sem cabeçalho identificável.`,
         excelRow: 1,
-        businessId: sheetName
+        businessId: sheetName,
+        severity: "blocker"
       });
     }
 
     const validRowCount = Math.max(matrix.length - 1, 0);
-    return buildReport("indicadores", criticalErrors, warnings, validRowCount);
+    return buildReport("indicadores", findings, validRowCount);
   }
 
   function validateWorkbook(workbook, kind) {
@@ -140,7 +146,7 @@
     if (kind === "indicadores") {
       return validateIndicadores(workbook);
     }
-    return buildReport(kind, [], [], 0);
+    return buildReport(kind, [], 0);
   }
 
   window.MoldeValidation = {

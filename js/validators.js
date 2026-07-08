@@ -94,8 +94,12 @@
     return "(sem identificador)";
   }
 
-  function createCritical(ruleId, message, excelRow, businessId) {
-    return { ruleId, message, excelRow, businessId };
+  function createBlocker(ruleId, message, excelRow, businessId) {
+    return { ruleId, message, excelRow, businessId, severity: "blocker" };
+  }
+
+  function createAlert(ruleId, message, excelRow, businessId) {
+    return { ruleId, message, excelRow, businessId, severity: "alert" };
   }
 
   function validatePedidosStructure(headerIndex) {
@@ -104,7 +108,7 @@
       const key = schemas().normalizeHeader(columnName);
       if (!Object.prototype.hasOwnProperty.call(headerIndex, key)) {
         errors.push(
-          createCritical(
+          createBlocker(
             "VAL-01",
             `Coluna obrigatória ausente: ${columnName}.`,
             schemas().PEDIDOS_HEADER_ROW,
@@ -123,16 +127,16 @@
       const businessId = getBusinessIdPedido(record);
 
       if (isEmptyValue(record.SITUAÇÃO ?? record["SITUAÇÃO"])) {
-        errors.push(createCritical("VAL-02", "Pedido sem situação.", excelRow, businessId));
+        errors.push(createAlert("VAL-02", "Pedido sem situação.", excelRow, businessId));
       }
       if (isEmptyValue(record.CLIENTE)) {
-        errors.push(createCritical("VAL-02", "Pedido sem cliente.", excelRow, businessId));
+        errors.push(createAlert("VAL-02", "Pedido sem cliente.", excelRow, businessId));
       }
       if (isEmptyValue(record["DATA PREVISTA"])) {
-        errors.push(createCritical("VAL-02", "Pedido sem data prevista.", excelRow, businessId));
+        errors.push(createAlert("VAL-02", "Pedido sem data prevista.", excelRow, businessId));
       }
       if (isEmptyValue(record["DATA ENTREGUE"])) {
-        errors.push(createCritical("VAL-02", "Pedido sem data entregue.", excelRow, businessId));
+        errors.push(createAlert("VAL-02", "Pedido sem data entregue.", excelRow, businessId));
       }
 
       const cadastro = parseBrazilianDate(record["DATA DE CADASTRO"]);
@@ -140,16 +144,16 @@
       const entregue = parseBrazilianDate(record["DATA ENTREGUE"]);
 
       if (!isEmptyValue(record["DATA DE CADASTRO"]) && !cadastro) {
-        errors.push(createCritical("VAL-03", "Data de cadastro inválida.", excelRow, businessId));
+        errors.push(createAlert("VAL-03", "Data de cadastro inválida.", excelRow, businessId));
       }
       if (!isEmptyValue(record["DATA PREVISTA"]) && !prevista) {
-        errors.push(createCritical("VAL-03", "Data prevista inválida.", excelRow, businessId));
+        errors.push(createAlert("VAL-03", "Data prevista inválida.", excelRow, businessId));
       }
       if (!isEmptyValue(record["DATA ENTREGUE"]) && !entregue) {
-        errors.push(createCritical("VAL-03", "Data entregue inválida.", excelRow, businessId));
+        errors.push(createAlert("VAL-03", "Data entregue inválida.", excelRow, businessId));
       }
       if (cadastro && entregue && entregue < cadastro) {
-        errors.push(createCritical("VAL-03", "Data entregue anterior à data de cadastro.", excelRow, businessId));
+        errors.push(createAlert("VAL-03", "Data entregue anterior à data de cadastro.", excelRow, businessId));
       }
 
       const valorBruto = parseBrazilianNumber(record["VALOR BRUTO"]);
@@ -159,7 +163,7 @@
         const expected = valorBruto - valorDesconto;
         if (Math.abs(expected - valorFinal) > 0.01) {
           errors.push(
-            createCritical(
+            createAlert(
               "VAL-04",
               "Divergência entre Valor Bruto - Valor Desconto e Valor Final.",
               excelRow,
@@ -172,7 +176,7 @@
       const situacao = String(record.SITUAÇÃO ?? record["SITUAÇÃO"] ?? "").toLowerCase();
       const valorPendente = parseBrazilianNumber(record["VALOR PENDENTE"]) ?? 0;
       if (situacao.includes("entregue") && valorPendente > 0.01) {
-        errors.push(createCritical("VAL-05", "Pedido entregue com valor pendente.", excelRow, businessId));
+        errors.push(createAlert("VAL-05", "Pedido entregue com valor pendente.", excelRow, businessId));
       }
     });
 
@@ -186,7 +190,7 @@
     schemas().EXPECTED_CONTAS_MONTHLY_SHEETS.forEach((sheetName) => {
       if (!present.has(sheetName)) {
         errors.push(
-          createCritical("VAL-06", `Aba mensal ausente: ${sheetName}.`, schemas().CONTAS_HEADER_ROW, sheetName)
+          createBlocker("VAL-06", `Aba mensal ausente: ${sheetName}.`, schemas().CONTAS_HEADER_ROW, sheetName)
         );
       }
     });
@@ -201,7 +205,7 @@
         const key = schemas().normalizeHeader(columnName);
         if (!Object.prototype.hasOwnProperty.call(headerIndex, key)) {
           errors.push(
-            createCritical(
+            createBlocker(
               "VAL-06",
               `Cabeçalho incompleto em ${sheetName}: falta ${columnName}.`,
               schemas().CONTAS_HEADER_ROW,
@@ -222,20 +226,20 @@
       const businessId = `${sheetName} · ${getBusinessIdConta(record)}`;
 
       if (parseBrazilianNumber(record.VALOR) === null) {
-        errors.push(createCritical("VAL-07", "Conta sem valor.", excelRow, businessId));
+        errors.push(createAlert("VAL-07", "Conta sem valor.", excelRow, businessId));
       }
       if (isEmptyValue(record.CLASSIFICAÇÃO ?? record["CLASSIFICAÇÃO"])) {
-        errors.push(createCritical("VAL-07", "Conta sem classificação.", excelRow, businessId));
+        errors.push(createAlert("VAL-07", "Conta sem classificação.", excelRow, businessId));
       }
       if (isEmptyValue(record.CATEGORIA)) {
-        errors.push(createCritical("VAL-07", "Conta sem categoria.", excelRow, businessId));
+        errors.push(createAlert("VAL-07", "Conta sem categoria.", excelRow, businessId));
       }
       if (isEmptyValue(record.CONTA)) {
-        errors.push(createCritical("VAL-07", "Conta sem conta bancária.", excelRow, businessId));
+        errors.push(createAlert("VAL-07", "Conta sem conta bancária.", excelRow, businessId));
       }
 
       if (isPaidFlag(record.PAGO) && isEmptyValue(record["DATA PAG"])) {
-        errors.push(createCritical("VAL-08", "Conta paga sem data de pagamento.", excelRow, businessId));
+        errors.push(createAlert("VAL-08", "Conta paga sem data de pagamento.", excelRow, businessId));
       }
 
       const vencimento = parseBrazilianDate(record["DATA VENC"]);
@@ -244,7 +248,7 @@
         const year = vencimento.getFullYear();
         if (month !== expectedMonth || year !== expectedYear) {
           errors.push(
-            createCritical(
+            createAlert(
               "VAL-09",
               `Vencimento fora do mês/ano esperado da aba (${expectedMonth}/${expectedYear}).`,
               excelRow,
@@ -289,7 +293,7 @@
         }
         seenPairs.add(pairKey);
         errors.push(
-          createCritical(
+          createAlert(
             ruleId,
             `${fieldName} com grafias parecidas: "${left.label}" e "${right.label}".`,
             right.excelRow,

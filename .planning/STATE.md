@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-last_updated: "2026-07-07T22:10:00.000Z"
+last_updated: "2026-07-08T11:30:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 3
@@ -21,7 +21,7 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 **Core value:** O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamente receita, despesas, pendências, prazos e inconsistências com números confiáveis.
 
 **Current focus:** Phase 4 — Normalização, Estado e Tabelas
-**Status:** Ready to plan
+**Status:** Context gathered — ready to plan
 **Plans:** 0
 
 ## Workflow
@@ -61,8 +61,8 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 
 ## Next Step
 
-Run `/gsd-discuss-phase 4` or `/gsd-plan-phase 4` to start normalization and tables.
+Run `/gsd-plan-phase 4` to plan normalization, persistence, filters and tables.
 
 ---
 *Initialized: 2026-07-07*
-*Last activity: 2026-07-07 — Phase 3 completed with validation engine and upload report UI*
+*Last activity: 2026-07-08 — Phase 4 context gathered (normalization trigger & persistence)*

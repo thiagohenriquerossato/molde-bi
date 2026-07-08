@@ -494,15 +494,17 @@ function updateFilterVisibility(route) {
   if (filterToggle) {
     filterToggle.hidden = !analytical;
   }
-  if (!analytical) {
-    if (filterPanel) {
-      filterPanel.hidden = true;
-    }
-    if (shell) {
-      shell.dataset.filterOpen = "false";
-    }
-    filterToggle?.setAttribute("aria-expanded", "false");
+  if (analytical) {
+    renderFilterPanelContent(route);
+    return;
   }
+  if (filterPanel) {
+    filterPanel.hidden = true;
+  }
+  if (shell) {
+    shell.dataset.filterOpen = "false";
+  }
+  filterToggle?.setAttribute("aria-expanded", "false");
 }
 
 function mountBaseDadosTable() {
@@ -1799,7 +1801,6 @@ function renderCurrentRoute(options = {}) {
   }
 
   if (routeName === "financeiro" && hasContasData()) {
-    renderFilterPanelContent(routeName);
     mountFinanceiroDashboard();
   }
 }

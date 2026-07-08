@@ -64,9 +64,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Finance
 
-- [ ] **FIN-01**: User sees contas KPIs for total, paid, open, overdue, due today, due in 7 days and due in 30 days.
-- [ ] **FIN-02**: User sees expenses by month, paid versus open, category, classification, supplier, due date heatmap and bank account charts.
-- [ ] **FIN-03**: User sees tables for overdue contas, next 7 days, no value, no classification, paid without payment date and future launches.
+- [x] **FIN-01**: User sees contas KPIs for total, paid, open, overdue, due today, due in 7 days and due in 30 days.
+- [x] **FIN-02**: User sees expenses by month, paid versus open, category, classification, supplier, due date heatmap and bank account charts.
+- [x] **FIN-03**: User sees tables for overdue contas, next 7 days, no value, no classification, paid without payment date and future launches.
 
 ### Orders and Revenue
 
@@ -169,9 +169,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXE-02 | Phase 5 | Complete |
 | EXE-03 | Phase 5 | Complete |
 | EXE-04 | Phase 5 | Complete |
-| FIN-01 | Phase 6 | Pending |
-| FIN-02 | Phase 6 | Pending |
-| FIN-03 | Phase 6 | Pending |
+| FIN-01 | Phase 6 | Complete |
+| FIN-02 | Phase 6 | Complete |
+| FIN-03 | Phase 6 | Complete |
 | ORD-01 | Phase 7 | Pending |
 | ORD-02 | Phase 7 | Pending |
 | ORD-03 | Phase 7 | Pending |

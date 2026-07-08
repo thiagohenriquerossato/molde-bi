@@ -51,7 +51,8 @@ const routes = {
     description: "Visão geral do negócio após importação e validação das planilhas.",
     emptyTitle: "Dashboard executivo sem dados",
     emptyBody: "Importe as planilhas para visualizar receita, despesas, resultado e pedidos.",
-    icon: "EX"
+    icon: "EX",
+    render: renderExecutivoPage
   },
   financeiro: {
     eyebrow: "Contas a pagar",
@@ -129,6 +130,8 @@ let shouldFocusPendingUpload = false;
 const appState = { dataset: null, restoredFromStore: false };
 let filterState = { search: "" };
 let baseDadosTab = "pedidos";
+let executiveChartInstances = [];
+let executiveResizeTimer = null;
 const tableSortState = {
   pedidos: { key: null, direction: null },
   contas: { key: null, direction: null },
@@ -138,6 +141,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short"
 });
+const shortDateFormatter = new Intl.DateTimeFormat("pt-BR");
 
 function getStoredTheme() {
   try {
@@ -178,6 +182,9 @@ function toggleTheme() {
   const nextTheme = currentTheme === "dark" ? "light" : "dark";
   applyTheme(nextTheme);
   setStoredTheme(nextTheme);
+  if (getRouteFromHash() === "executivo" && canContinueToDashboards()) {
+    mountExecutivoDashboard();
+  }
 }
 
 function getRouteFromHash() {
@@ -541,6 +548,240 @@ function renderEmptyPage(route) {
       </div>
     </section>
   `;
+}
+
+function renderMetricCard(label, options = {}) {
+  const classes = ["metric-card", options.warning ? "metric-card--warning" : ""].filter(Boolean).join(" ");
+  const badge = options.badge ? `<span class="metric-card-badge">${escapeHTML(options.badge)}</span>` : "";
+  const subtitle = options.subtitle ? `<span class="metric-card-subtitle">${escapeHTML(options.subtitle)}</span>` : "";
+  return `
+    <article class="${classes}">
+      <p class="metric-card-label">${escapeHTML(label)}</p>
+      ${badge}
+      <p class="metric-card-value" data-metric="${options.key || ""}">—</p>
+      ${subtitle}
+    </article>
+  `;
+}
+
+function renderMetricBlock(title, cardsHtml, options = {}) {
+  const blockClass = options.pipeline ? "metric-block metric-block--pipeline" : "metric-block";
+  return `
+    <section class="${blockClass}">
+      <h2 class="metric-block-title">${escapeHTML(title)}</h2>
+      <div class="metric-grid">${cardsHtml}</div>
+    </section>
+  `;
+}
+
+function renderExecutivoPage(route) {
+  if (!canContinueToDashboards()) {
+    return renderEmptyPage(route);
+  }
+
+  const receitaCards = [
+    renderMetricCard("Receita ativa", { key: "receitaAtiva" }),
+    renderMetricCard("Valor recebido", { key: "valorRecebido" }),
+    renderMetricCard("Valor pendente", { key: "valorPendente" })
+  ].join("");
+
+  const despesaCards = [
+    renderMetricCard("Despesas totais", { key: "despesasTotais" }),
+    renderMetricCard("Despesas pagas", { key: "despesasPagas" }),
+    renderMetricCard("Despesas em aberto", { key: "despesasAbertas" }),
+    renderMetricCard("Contas vencidas", { key: "contasVencidas" })
+  ].join("");
+
+  const resultadoCards = [
+    renderMetricCard("Resultado competência", { key: "resultadoCompetencia" }),
+    renderMetricCard("Ticket médio", { key: "ticketMedio" }),
+    renderMetricCard("Pedidos totais", { key: "pedidosTotais" }),
+    renderMetricCard("Pedidos entregues", { key: "pedidosEntregues" })
+  ].join("");
+
+  const pipelineCard = renderMetricCard("Pipeline (orçamento)", {
+    key: "pipelineValor",
+    warning: true,
+    badge: "Não contabilizado na receita",
+    subtitle: "0 pedidos"
+  });
+
+  const chartPanels = [
+    { id: "revenue-expense-result", title: "Receita, despesa e resultado por mês" },
+    { id: "received-pending", title: "Recebido e pendente por mês" },
+    { id: "fixed-variable", title: "Despesas fixas e variáveis por mês" },
+    { id: "orders-status", title: "Pedidos por situação" },
+    { id: "top-classification", title: "Top 10 despesas por classificação" },
+    { id: "top-vendors", title: "Top vendedores por receita" }
+  ]
+    .map(
+      (panel) => `
+        <article class="chart-panel">
+          <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+          <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+        </article>
+      `
+    )
+    .join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${renderMetricBlock("Receita", receitaCards)}
+    ${renderMetricBlock("Despesas", despesaCards)}
+    ${renderMetricBlock("Resultado e pedidos", resultadoCards)}
+    ${renderMetricBlock("Pipeline", pipelineCard, { pipeline: true })}
+    <section class="executive-charts-grid" aria-label="Gráficos executivos">
+      ${chartPanels}
+    </section>
+    <section class="executive-exceptions" aria-label="Contas em atenção">
+      <article class="card">
+        <h3 class="chart-panel-title">Contas vencidas</h3>
+        <div data-exception="overdue"></div>
+      </article>
+      <article class="card">
+        <h3 class="chart-panel-title">Próximos 7 dias</h3>
+        <div data-exception="upcoming"></div>
+      </article>
+    </section>
+  `;
+}
+
+function formatExecutiveDate(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : shortDateFormatter.format(date);
+}
+
+function renderExceptionTable(rows, emptyMessage) {
+  if (!rows.length) {
+    return `<p class="executive-exception-empty">${escapeHTML(emptyMessage)}</p>`;
+  }
+  return `
+    <table class="data-table executive-exception-table">
+      <thead>
+        <tr>
+          <th scope="col">Fornecedor</th>
+          <th scope="col">Vencimento</th>
+          <th scope="col" class="text-right">Valor</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHTML(row.fornecedor || "—")}</td>
+                <td>${formatExecutiveDate(row.data_vencimento)}</td>
+                <td class="text-right">${window.MoldeMetrics?.formatCurrency(row.valor) || "—"}</td>
+                <td>${escapeHTML(row.status_pagamento || "—")}</td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function disposeExecutiveCharts() {
+  if (window.MoldeCharts && executiveChartInstances.length) {
+    window.MoldeCharts.disposeExecutiveCharts(executiveChartInstances);
+  }
+  executiveChartInstances = [];
+}
+
+function mountExecutivoDashboard() {
+  if (getRouteFromHash() !== "executivo" || !canContinueToDashboards() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const contas = window.MoldeFilters.applyFilters(appState.dataset.contas || [], "contas", filterState);
+  const kpis = window.MoldeMetrics.computeExecutiveKpis(pedidos, contas);
+  const format = window.MoldeMetrics.formatCurrency;
+
+  const metricMap = {
+    receitaAtiva: format(kpis.receitaAtiva),
+    valorRecebido: format(kpis.valorRecebido),
+    valorPendente: format(kpis.valorPendente),
+    despesasTotais: format(kpis.despesasTotais),
+    despesasPagas: format(kpis.despesasPagas),
+    despesasAbertas: format(kpis.despesasAbertas),
+    contasVencidas: format(kpis.contasVencidas),
+    resultadoCompetencia: format(kpis.resultadoCompetencia),
+    ticketMedio: format(kpis.ticketMedio),
+    pedidosTotais: String(kpis.pedidosTotais),
+    pedidosEntregues: String(kpis.pedidosEntregues),
+    pipelineValor: format(kpis.pipelineValor)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+    }
+  });
+
+  const pipelineSubtitle = document.querySelector(".metric-card--warning .metric-card-subtitle");
+  if (pipelineSubtitle) {
+    pipelineSubtitle.textContent = `${kpis.pipelineCount} pedido${kpis.pipelineCount === 1 ? "" : "s"}`;
+  }
+
+  disposeExecutiveCharts();
+
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      revenueExpenseResult: document.querySelector('[data-chart="revenue-expense-result"]'),
+      receivedPending: document.querySelector('[data-chart="received-pending"]'),
+      fixedVariable: document.querySelector('[data-chart="fixed-variable"]'),
+      ordersStatus: document.querySelector('[data-chart="orders-status"]'),
+      topClassification: document.querySelector('[data-chart="top-classification"]'),
+      topVendors: document.querySelector('[data-chart="top-vendors"]')
+    };
+    executiveChartInstances = window.MoldeCharts.renderExecutiveCharts(containers, pedidos, contas, theme);
+  }
+
+  const overdueEl = document.querySelector('[data-exception="overdue"]');
+  const upcomingEl = document.querySelector('[data-exception="upcoming"]');
+  if (overdueEl) {
+    overdueEl.innerHTML = renderExceptionTable(
+      window.MoldeMetrics.getOverdueContas(contas),
+      "Nenhuma conta vencida no recorte atual."
+    );
+  }
+  if (upcomingEl) {
+    upcomingEl.innerHTML = renderExceptionTable(
+      window.MoldeMetrics.getUpcomingContas(contas),
+      "Nenhum vencimento nos próximos 7 dias."
+    );
+  }
+}
+
+function scheduleExecutiveChartResize() {
+  if (executiveResizeTimer) {
+    clearTimeout(executiveResizeTimer);
+  }
+  executiveResizeTimer = setTimeout(() => {
+    if (getRouteFromHash() !== "executivo") {
+      return;
+    }
+    executiveChartInstances.forEach((instance) => {
+      if (instance && typeof instance.resize === "function") {
+        instance.resize();
+      }
+    });
+  }, 150);
 }
 
 function renderFindingItem(finding, severityLabel, severityClass) {
@@ -1093,6 +1334,8 @@ function attachGlobalInteractions() {
     onFilterStateChanged();
     renderFilterChips();
   });
+
+  window.addEventListener("resize", scheduleExecutiveChartResize);
 }
 
 function onFilterStateChanged() {
@@ -1100,6 +1343,9 @@ function onFilterStateChanged() {
   syncTopbarSearch();
   if (getRouteFromHash() === "base-dados") {
     mountBaseDadosTable();
+  }
+  if (getRouteFromHash() === "executivo" && canContinueToDashboards()) {
+    mountExecutivoDashboard();
   }
 }
 
@@ -1207,6 +1453,7 @@ function syncSidebarAccessibility() {
 }
 
 function renderCurrentRoute(options = {}) {
+  disposeExecutiveCharts();
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
@@ -1232,6 +1479,10 @@ function renderCurrentRoute(options = {}) {
 
   if (routeName === "base-dados" && hasDataset()) {
     mountBaseDadosTable();
+  }
+
+  if (routeName === "executivo" && canContinueToDashboards()) {
+    mountExecutivoDashboard();
   }
 }
 

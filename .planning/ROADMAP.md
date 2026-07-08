@@ -93,6 +93,8 @@
 
 **UI hint:** yes
 
+**Status:** Complete — 2026-07-08
+
 **Success criteria:**
 1. KPIs mostram receita, recebido, pendente, despesas, vencidas, resultado, ticket e pedidos.
 2. Gráficos principais usam ECharts e atualizam com filtros.

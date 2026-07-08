@@ -57,10 +57,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Executive Dashboard
 
-- [ ] **EXE-01**: User sees executive KPIs for revenue, received amount, pending amount, expenses, overdue accounts, result, ticket médio and order counts.
-- [ ] **EXE-02**: User sees charts for revenue, expenses, result, received versus pending, expenses fixed versus variable, order status and top rankings.
-- [ ] **EXE-03**: User sees short exception lists for overdue and upcoming accounts.
-- [ ] **EXE-04**: User can filter dashboard numbers without confusing pipeline with realized revenue.
+- [x] **EXE-01**: User sees executive KPIs for revenue, received amount, pending amount, expenses, overdue accounts, result, ticket médio and order counts.
+- [x] **EXE-02**: User sees charts for revenue, expenses, result, received versus pending, expenses fixed versus variable, order status and top rankings.
+- [x] **EXE-03**: User sees short exception lists for overdue and upcoming accounts.
+- [x] **EXE-04**: User can filter dashboard numbers without confusing pipeline with realized revenue.
 
 ### Finance
 
@@ -165,10 +165,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FLT-05 | Phase 4 | Pending |
 | TBL-01 | Phase 4 | Pending |
 | TBL-02 | Phase 4 | Pending |
-| EXE-01 | Phase 5 | Pending |
-| EXE-02 | Phase 5 | Pending |
-| EXE-03 | Phase 5 | Pending |
-| EXE-04 | Phase 5 | Pending |
+| EXE-01 | Phase 5 | Complete |
+| EXE-02 | Phase 5 | Complete |
+| EXE-03 | Phase 5 | Complete |
+| EXE-04 | Phase 5 | Complete |
 | FIN-01 | Phase 6 | Pending |
 | FIN-02 | Phase 6 | Pending |
 | FIN-03 | Phase 6 | Pending |

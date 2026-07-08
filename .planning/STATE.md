@@ -21,7 +21,7 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 **Core value:** O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamente receita, despesas, pendências, prazos e inconsistências com números confiáveis.
 
 **Current focus:** Phase 6 — Financeiro e Contas a Pagar
-**Status:** Pending
+**Status:** Context gathered — ready for planning
 **Plans:** 0/0 planned
 
 ## Workflow
@@ -61,7 +61,7 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 
 ## Next Step
 
-Run `/gsd-discuss-phase 6` or `/gsd-plan-phase 6` for the finance dashboard.
+Run `/gsd-plan-phase 6` for the finance dashboard (context in `06-CONTEXT.md`).
 
 ---
 *Initialized: 2026-07-07*

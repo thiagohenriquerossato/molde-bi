@@ -154,7 +154,7 @@
     if (filters.cancelado && row.situacao_grupo !== "Perdido / cancelado") {
       return false;
     }
-    if (filters.aguardandoAprovacao && row.situacao_grupo !== "Pipeline / orçamento") {
+    if (filters.aguardandoAprovacao && row.situacao_grupo !== "Aguardando Aprovação") {
       return false;
     }
     if (!matchesMulti(row.situacao_original, filters.situacao)) {

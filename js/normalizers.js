@@ -4,7 +4,7 @@
   const validators = () => window.MoldeValidators;
 
   const SITUACAO_GRUPO_ENTRIES = [
-    ["Aguardando Aprovação", "Pipeline / orçamento"],
+    ["Aguardando Aprovação", "Aguardando Aprovação"],
     ["Aguardando Produzir", "Pedido ativo"],
     ["Produzindo", "Pedido ativo"],
     ["Pronto para Entrega", "Pedido ativo"],

@@ -1,6 +1,6 @@
 (function () {
   const RECEITA_ATIVA_GRUPOS = ["Pedido ativo", "Entregue"];
-  const PIPELINE_GRUPO = "Pipeline / orçamento";
+  const PIPELINE_GRUPO = "Aguardando Aprovação";
   const CANCELADO_GRUPO = "Perdido / cancelado";
   const ENTREGUE_GRUPO = "Entregue";
   const DESPESA_FIXA_KEYWORDS = [
@@ -469,6 +469,262 @@
       .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento));
   }
 
+  const ATIVO_GRUPO = "Pedido ativo";
+  const HIGH_DISCOUNT_RATIO = 0.2;
+
+  function getActivePedidoRows(pedidos) {
+    return (pedidos || []).filter(isReceitaAtiva);
+  }
+
+  function getDeliveredRows(pedidos) {
+    return (pedidos || []).filter((row) => row.situacao_grupo === ENTREGUE_GRUPO);
+  }
+
+  function computePedidosKpis(pedidos) {
+    const rows = pedidos || [];
+    const activeRows = getActivePedidoRows(rows);
+    const deliveredRows = getDeliveredRows(rows);
+    const pipelineRows = rows.filter(isPipeline);
+
+    const valorBruto = sumField(activeRows, (row) => row.valor_bruto);
+    const descontos = sumField(activeRows, (row) => row.valor_desconto);
+    const valorFinal = sumField(activeRows, (row) => row.valor_final);
+    const valorPago = sumField(activeRows, (row) => row.valor_pago);
+    const valorPendente = sumField(activeRows, (row) => row.valor_pendente);
+    const activeCount = activeRows.length;
+    const ticketMedio = activeCount > 0 ? valorFinal / activeCount : 0;
+
+    const discountRates = activeRows
+      .filter((row) => row.valor_bruto > 0)
+      .map((row) => ((row.valor_desconto || 0) / row.valor_bruto) * 100);
+    const descontoMedio = discountRates.length
+      ? discountRates.reduce((total, value) => total + value, 0) / discountRates.length
+      : 0;
+
+    const productionDays = deliveredRows
+      .map((row) => row.dias_producao)
+      .filter((value) => Number.isFinite(value));
+    const tempoMedioProducao = productionDays.length
+      ? productionDays.reduce((total, value) => total + value, 0) / productionDays.length
+      : 0;
+
+    const lateDays = deliveredRows
+      .map((row) => row.dias_atraso)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const atrasoMedio = lateDays.length
+      ? lateDays.reduce((total, value) => total + value, 0) / lateDays.length
+      : 0;
+
+    const onTimeEligible = deliveredRows.filter(
+      (row) => row.data_prevista && row.data_entregue && row.entregue_no_prazo !== null
+    );
+    const onTimeCount = onTimeEligible.filter((row) => row.entregue_no_prazo === true).length;
+    const percentualEntregueNoPrazo = onTimeEligible.length ? (onTimeCount / onTimeEligible.length) * 100 : 0;
+
+    const pipelineValor = sumField(pipelineRows, (row) => row.valor_final);
+
+    return {
+      valorBruto,
+      descontos,
+      valorFinal,
+      valorPago,
+      valorPendente,
+      ticketMedio,
+      totalPedidos: rows.length,
+      pedidosEntregues: deliveredRows.length,
+      pedidosCancelados: rows.filter((row) => row.situacao_grupo === CANCELADO_GRUPO).length,
+      pedidosAtivos: rows.filter((row) => row.situacao_grupo === ATIVO_GRUPO).length,
+      pipelineCount: pipelineRows.length,
+      pipelineValor,
+      descontoMedio,
+      tempoMedioProducao,
+      atrasoMedio,
+      percentualEntregueNoPrazo
+    };
+  }
+
+  function aggregateRevenueByMonth(pedidos) {
+    const months = new Set();
+    const valorMap = new Map();
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      valorMap.set(month, (valorMap.get(month) || 0) + (row.valor_final || 0));
+    });
+    return sortMonths(months).map((month) => ({ month, valor: valorMap.get(month) || 0 }));
+  }
+
+  function aggregateOrdersCountByMonth(pedidos) {
+    const months = new Set();
+    const countMap = new Map();
+    (pedidos || []).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      countMap.set(month, (countMap.get(month) || 0) + 1);
+    });
+    return sortMonths(months).map((month) => ({ month, count: countMap.get(month) || 0 }));
+  }
+
+  function aggregateTicketByMonth(pedidos) {
+    const months = new Set();
+    const sumMap = new Map();
+    const countMap = new Map();
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      sumMap.set(month, (sumMap.get(month) || 0) + (row.valor_final || 0));
+      countMap.set(month, (countMap.get(month) || 0) + 1);
+    });
+    return sortMonths(months).map((month) => {
+      const count = countMap.get(month) || 0;
+      const sum = sumMap.get(month) || 0;
+      return { month, ticket: count > 0 ? sum / count : 0 };
+    });
+  }
+
+  function aggregateDiscountByMonth(pedidos) {
+    const months = new Set();
+    const valorMap = new Map();
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      valorMap.set(month, (valorMap.get(month) || 0) + (row.valor_desconto || 0));
+    });
+    return sortMonths(months).map((month) => ({ month, valor: valorMap.get(month) || 0 }));
+  }
+
+  function topClientsByRevenue(pedidos, limit = 12) {
+    const totals = new Map();
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const label = row.cliente || "Sem cliente";
+      totals.set(label, (totals.get(label) || 0) + (row.valor_final || 0));
+    });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  function ordersCountByVendor(pedidos, limit = 12) {
+    const totals = new Map();
+    (pedidos || []).forEach((row) => {
+      const label = row.vendedor || "Sem vendedor";
+      totals.set(label, (totals.get(label) || 0) + 1);
+    });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  function pendingByStatus(pedidos) {
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !isCancelado(row))
+      .forEach((row) => {
+        const grupo = row.situacao_grupo || "Sem status";
+        totals.set(grupo, (totals.get(grupo) || 0) + (row.valor_pendente || 0));
+      });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+  }
+
+  function onTimeDeliverySplit(pedidos) {
+    const delivered = getDeliveredRows(pedidos).filter(
+      (row) => row.data_prevista && row.data_entregue && row.entregue_no_prazo !== null
+    );
+    const onTime = delivered.filter((row) => row.entregue_no_prazo === true).length;
+    const late = delivered.length - onTime;
+    return [
+      { label: "No prazo", value: onTime },
+      { label: "Atrasados", value: late }
+    ].filter((item) => item.value > 0);
+  }
+
+  function productionTimeByMonth(pedidos) {
+    const monthBuckets = new Map();
+    getDeliveredRows(pedidos).forEach((row) => {
+      if (!Number.isFinite(row.dias_producao)) {
+        return;
+      }
+      const month = row.mes_entrega || monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      const bucket = monthBuckets.get(month) || { sum: 0, count: 0 };
+      bucket.sum += row.dias_producao;
+      bucket.count += 1;
+      monthBuckets.set(month, bucket);
+    });
+    return sortMonths(monthBuckets.keys()).map((month) => {
+      const bucket = monthBuckets.get(month);
+      return { month, media: bucket.count > 0 ? bucket.sum / bucket.count : 0 };
+    });
+  }
+
+  function ticketHistogram(pedidos) {
+    const bins = [
+      { label: "Até R$ 500", min: 0, max: 500, count: 0 },
+      { label: "R$ 500–1k", min: 500, max: 1000, count: 0 },
+      { label: "R$ 1k–2k", min: 1000, max: 2000, count: 0 },
+      { label: "R$ 2k–5k", min: 2000, max: 5000, count: 0 },
+      { label: "Acima R$ 5k", min: 5000, max: Infinity, count: 0 }
+    ];
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const value = row.valor_final || 0;
+      const bin = bins.find((item) => value >= item.min && value < item.max);
+      if (bin) {
+        bin.count += 1;
+      }
+    });
+    return bins.map(({ label, count }) => ({ label, value: count }));
+  }
+
+  function getPedidosAtrasados(pedidos) {
+    return (pedidos || [])
+      .filter((row) => row.entregue_no_prazo === false)
+      .sort((a, b) => (b.dias_atraso || 0) - (a.dias_atraso || 0));
+  }
+
+  function getPedidosEntreguesComPendencia(pedidos) {
+    return (pedidos || [])
+      .filter((row) => row.situacao_grupo === ENTREGUE_GRUPO && (row.valor_pendente || 0) > 0.01)
+      .sort((a, b) => (b.valor_pendente || 0) - (a.valor_pendente || 0));
+  }
+
+  function getPedidosSemCliente(pedidos) {
+    return (pedidos || []).filter((row) => !row.cliente || String(row.cliente).trim() === "");
+  }
+
+  function getPedidosSemDataPrevista(pedidos) {
+    return (pedidos || []).filter((row) => !row.data_prevista);
+  }
+
+  function getPedidosDescontoAlto(pedidos) {
+    return (pedidos || [])
+      .filter((row) => row.valor_bruto > 0 && (row.valor_desconto || 0) / row.valor_bruto >= HIGH_DISCOUNT_RATIO)
+      .sort((a, b) => (b.valor_desconto || 0) / (b.valor_bruto || 1) - (a.valor_desconto || 0) / (a.valor_bruto || 1));
+  }
+
+  function getPedidosPipeline(pedidos) {
+    return (pedidos || [])
+      .filter((row) => row.situacao_grupo === PIPELINE_GRUPO)
+      .sort((a, b) => new Date(a.data_cadastro) - new Date(b.data_cadastro));
+  }
+
   function formatPercent(value) {
     if (!Number.isFinite(value)) {
       return "—";
@@ -514,6 +770,23 @@
     getContasSemClassificacao,
     getContasPagasSemData,
     getContasFuturas,
+    computePedidosKpis,
+    aggregateRevenueByMonth,
+    aggregateOrdersCountByMonth,
+    aggregateTicketByMonth,
+    aggregateDiscountByMonth,
+    topClientsByRevenue,
+    ordersCountByVendor,
+    pendingByStatus,
+    onTimeDeliverySplit,
+    productionTimeByMonth,
+    ticketHistogram,
+    getPedidosAtrasados,
+    getPedidosEntreguesComPendencia,
+    getPedidosSemCliente,
+    getPedidosSemDataPrevista,
+    getPedidosDescontoAlto,
+    getPedidosPipeline,
     formatPercent,
     formatCurrency
   };

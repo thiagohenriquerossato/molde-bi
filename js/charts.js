@@ -419,11 +419,136 @@
     disposeInstances(instances);
   }
 
+  function renderPedidosCharts(containers, pedidos, theme) {
+    const metrics = window.MoldeMetrics;
+    if (!metrics || !containers) {
+      return [];
+    }
+
+    const colors = getChartColors();
+    const warningColor = getWarningColor();
+    const instances = [];
+    const push = (element, option) => {
+      if (element) {
+        instances.push(initChart(element, option, theme));
+      }
+    };
+
+    const revenue = metrics.aggregateRevenueByMonth(pedidos);
+    push(
+      containers.revenueMonth,
+      {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[0]],
+        grid: { left: 56, right: 16, top: 32, bottom: 32 },
+        tooltip: baseTooltip(),
+        xAxis: { type: "category", data: revenue.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value" },
+        series: [{ name: "Receita", type: "bar", data: revenue.map((item) => item.valor) }]
+      }
+    );
+
+    const ordersMonth = metrics.aggregateOrdersCountByMonth(pedidos);
+    push(
+      containers.ordersMonth,
+      {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[1]],
+        grid: { left: 56, right: 16, top: 32, bottom: 32 },
+        tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+        xAxis: { type: "category", data: ordersMonth.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value" },
+        series: [{ name: "Pedidos", type: "bar", data: ordersMonth.map((item) => item.count) }]
+      }
+    );
+
+    const ticketMonth = metrics.aggregateTicketByMonth(pedidos);
+    push(containers.ticketMonth, lineOption(colors, ticketMonth.map((item) => formatMonthLabel(item.month)), "Ticket médio", ticketMonth.map((item) => item.ticket)));
+
+    const ordersByGroup = metrics.aggregateOrdersByGroup(pedidos);
+    push(containers.ordersStatus, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      tooltip: { trigger: "item", formatter: (params) => `${params.name}<br/>${params.value} pedidos` },
+      series: [
+        {
+          type: "funnel",
+          left: "10%",
+          width: "80%",
+          sort: "descending",
+          label: { show: true, position: "inside" },
+          data: ordersByGroup.map((item) => ({
+            name: item.grupo,
+            value: item.count,
+            itemStyle: { color: item.grupo === metrics.PIPELINE_GRUPO ? warningColor : undefined }
+          }))
+        }
+      ]
+    });
+
+    push(containers.revenueVendor, horizontalBarOption(colors, metrics.topVendorsByRevenue(pedidos, 12)));
+    push(containers.ordersVendor, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 120, right: 16, top: 16, bottom: 32 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+      xAxis: { type: "value" },
+      yAxis: { type: "category", data: metrics.ordersCountByVendor(pedidos, 12).map((item) => item.label).reverse() },
+      series: [{ type: "bar", data: metrics.ordersCountByVendor(pedidos, 12).map((item) => item.value).reverse() }]
+    });
+
+    const pending = metrics.pendingByStatus(pedidos);
+    push(containers.pendingStatus, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 56, right: 16, top: 32, bottom: 72 },
+      tooltip: baseTooltip(),
+      xAxis: { type: "category", data: pending.map((item) => item.label), axisLabel: { interval: 0, rotate: 30 } },
+      yAxis: { type: "value" },
+      series: [{ name: "Pendente", type: "bar", data: pending.map((item) => item.value) }]
+    });
+
+    const discountMonth = metrics.aggregateDiscountByMonth(pedidos);
+    push(containers.discountMonth, lineOption([colors[3]], discountMonth.map((item) => formatMonthLabel(item.month)), "Descontos", discountMonth.map((item) => item.valor)));
+
+    push(containers.topClients, horizontalBarOption(colors, metrics.topClientsByRevenue(pedidos, 12)));
+
+    const onTime = metrics.onTimeDeliverySplit(pedidos);
+    push(containers.onTimeDelivery, donutOption(colors, onTime));
+
+    const production = metrics.productionTimeByMonth(pedidos);
+    push(containers.productionTimeMonth, lineOption([colors[4]], production.map((item) => formatMonthLabel(item.month)), "Dias", production.map((item) => item.media)));
+
+    const histogram = metrics.ticketHistogram(pedidos);
+    push(containers.ticketDistribution, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: [colors[0]],
+      grid: { left: 56, right: 16, top: 16, bottom: 56 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+      xAxis: { type: "category", data: histogram.map((item) => item.label), axisLabel: { interval: 0, rotate: 20 } },
+      yAxis: { type: "value" },
+      series: [{ type: "bar", data: histogram.map((item) => item.value) }]
+    });
+
+    return instances.filter(Boolean);
+  }
+
+  function disposePedidosCharts(instances) {
+    disposeInstances(instances);
+  }
+
   window.MoldeCharts = {
     getChartColors,
     renderExecutiveCharts,
     disposeExecutiveCharts,
     renderFinanceCharts,
-    disposeFinanceCharts
+    disposeFinanceCharts,
+    renderPedidosCharts,
+    disposePedidosCharts
   };
 })();

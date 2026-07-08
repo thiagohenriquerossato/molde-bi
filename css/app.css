@@ -1151,6 +1151,20 @@ input:disabled,
   margin-bottom: var(--space-6);
 }
 
+.pedidos-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.pedidos-tables-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
 .metric-card-value--name {
   font-size: 1.125rem;
   white-space: nowrap;
@@ -1200,7 +1214,9 @@ input:disabled,
   .executive-charts-grid,
   .executive-exceptions,
   .finance-charts-grid,
-  .finance-tables-grid {
+  .finance-tables-grid,
+  .pedidos-charts-grid,
+  .pedidos-tables-grid {
     grid-template-columns: 1fr;
   }
 }

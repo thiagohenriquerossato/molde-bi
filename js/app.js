@@ -69,7 +69,8 @@ const routes = {
     description: "Acompanhamento de pedidos, clientes, valores e prazos.",
     emptyTitle: "Pedidos sem base importada",
     emptyBody: "Carregue a planilha de pedidos para acompanhar status, valores e prazos.",
-    icon: "PD"
+    icon: "PD",
+    render: renderPedidosPage
   },
   resultado: {
     eyebrow: "Visão integrada",
@@ -133,6 +134,7 @@ let filterState = { search: "" };
 let baseDadosTab = "pedidos";
 let executiveChartInstances = [];
 let financeChartInstances = [];
+let pedidosChartInstances = [];
 let executiveResizeTimer = null;
 const ANALYTICAL_ROUTES = ["executivo", "financeiro", "pedidos", "resultado", "insights"];
 const tableSortState = {
@@ -189,6 +191,9 @@ function toggleTheme() {
   }
   if (getRouteFromHash() === "financeiro" && hasContasData()) {
     mountFinanceiroDashboard();
+  }
+  if (getRouteFromHash() === "pedidos" && hasPedidosData()) {
+    mountPedidosDashboard();
   }
 }
 
@@ -402,6 +407,16 @@ function renderContaToggle(flag, label) {
   `;
 }
 
+function renderPedidoToggle(flag, label) {
+  const checked = filterState.pedidos[flag] ? "checked" : "";
+  return `
+    <label class="filter-toggle">
+      <input type="checkbox" data-filter-pedido-toggle="${flag}" ${checked}>
+      <span>${escapeHTML(label)}</span>
+    </label>
+  `;
+}
+
 function renderContaFilters(contas) {
   const distinct = (field) => window.MoldeFilters.getDistinctValues(contas, field);
   const pagoValue = filterState.contas.pago === true ? "true" : filterState.contas.pago === false ? "false" : "";
@@ -465,6 +480,39 @@ function renderExecutivoFilters(pedidos, contas) {
   `;
 }
 
+function renderPedidoFilters(pedidos) {
+  const distinct = (field) => window.MoldeFilters.getDistinctValues(pedidos, field);
+  return `
+    <div class="filter-panel-grid">
+      ${renderPeriodFilterFields()}
+      <fieldset>
+        <legend>Pedidos</legend>
+        ${renderFilterDropdown("pedidos", "situacao", "Situação", distinct("situacao_original"), filterState.pedidos.situacao)}
+        ${renderFilterDropdown("pedidos", "situacaoGrupo", "Grupo", distinct("situacao_grupo"), filterState.pedidos.situacaoGrupo)}
+        ${renderFilterDropdown("pedidos", "vendedor", "Vendedor", distinct("vendedor"), filterState.pedidos.vendedor)}
+        ${renderFilterDropdown("pedidos", "cliente", "Cliente", distinct("cliente"), filterState.pedidos.cliente)}
+        ${renderFilterDropdown("pedidos", "formaEntrada", "Pagamento entrada", distinct("forma_pagamento_entrada"), filterState.pedidos.formaEntrada)}
+        ${renderFilterDropdown("pedidos", "formaSaldo", "Pagamento saldo", distinct("forma_pagamento_saldo"), filterState.pedidos.formaSaldo)}
+      </fieldset>
+      <fieldset>
+        <legend>Condições</legend>
+        <div class="filter-toggle-grid">
+          ${renderPedidoToggle("comPendente", "Com valor pendente")}
+          ${renderPedidoToggle("semCliente", "Sem cliente")}
+          ${renderPedidoToggle("semDataPrevista", "Sem data prevista")}
+          ${renderPedidoToggle("entregueNoPrazo", "Entregue no prazo")}
+          ${renderPedidoToggle("atrasado", "Atrasado")}
+          ${renderPedidoToggle("cancelado", "Cancelado")}
+          ${renderPedidoToggle("aguardandoAprovacao", "Aguardando aprovação")}
+        </div>
+      </fieldset>
+    </div>
+    <div class="filter-panel-actions">
+      <button class="button button-outline" type="button" data-filter-clear>Limpar filtros</button>
+    </div>
+  `;
+}
+
 function renderFilterPanelContent(route = getRouteFromHash()) {
   if (!filterPanel) {
     return;
@@ -479,6 +527,11 @@ function renderFilterPanelContent(route = getRouteFromHash()) {
 
   if (route === "financeiro") {
     filterPanel.innerHTML = renderContaFilters(contas);
+    return;
+  }
+
+  if (route === "pedidos") {
+    filterPanel.innerHTML = renderPedidoFilters(pedidos);
     return;
   }
 
@@ -665,6 +718,10 @@ function hasContasData() {
   return Boolean(appState.dataset && appState.dataset.contas?.length);
 }
 
+function hasPedidosData() {
+  return Boolean(appState.dataset && appState.dataset.pedidos?.length);
+}
+
 function renderMetricBlock(title, cardsHtml, options = {}) {
   const blockClass = options.pipeline ? "metric-block metric-block--pipeline" : "metric-block";
   return `
@@ -700,7 +757,7 @@ function renderExecutivoPage(route) {
     renderMetricCard("Pedidos entregues", { key: "pedidosEntregues" })
   ].join("");
 
-  const pipelineCard = renderMetricCard("Pipeline (orçamento)", {
+  const pipelineCard = renderMetricCard("Aguardando Aprovação", {
     key: "pipelineValor",
     warning: true,
     badge: "Não contabilizado na receita",
@@ -737,7 +794,7 @@ function renderExecutivoPage(route) {
     ${renderMetricBlock("Receita", receitaCards)}
     ${renderMetricBlock("Despesas", despesaCards)}
     ${renderMetricBlock("Resultado e pedidos", resultadoCards)}
-    ${renderMetricBlock("Pipeline", pipelineCard, { pipeline: true })}
+    ${renderMetricBlock("Aguardando Aprovação", pipelineCard, { pipeline: true })}
     <section class="executive-charts-grid" aria-label="Gráficos executivos">
       ${chartPanels}
     </section>
@@ -846,7 +903,14 @@ function scheduleExecutiveChartResize() {
   }
   executiveResizeTimer = setTimeout(() => {
     const route = getRouteFromHash();
-    const instances = route === "executivo" ? executiveChartInstances : route === "financeiro" ? financeChartInstances : [];
+    const instances =
+      route === "executivo"
+        ? executiveChartInstances
+        : route === "financeiro"
+          ? financeChartInstances
+          : route === "pedidos"
+            ? pedidosChartInstances
+            : [];
     instances.forEach((instance) => {
       if (instance && typeof instance.resize === "function") {
         instance.resize();
@@ -928,6 +992,117 @@ const FINANCE_TABLES = [
   { id: "no-class", title: "Contas sem classificação", columns: "base", empty: "Nenhuma conta sem classificação no recorte atual." },
   { id: "paid-no-date", title: "Pagas sem data de pagamento", columns: "base", empty: "Nenhuma conta paga sem data de pagamento." },
   { id: "future", title: "Lançamentos futuros por mês", columns: "future", empty: "Nenhum lançamento futuro no recorte atual." }
+];
+
+const PEDIDOS_TABLE_COLUMNS = {
+  base: [
+    { key: "pedido_id", label: "Pedido", type: "text", getValue: (r) => r.pedido_id },
+    { key: "cliente", label: "Cliente", type: "text", getValue: (r) => r.cliente },
+    { key: "vendedor", label: "Vendedor", type: "text", getValue: (r) => r.vendedor },
+    { key: "situacao_grupo", label: "Situação", type: "badge", getValue: (r) => r.situacao_grupo },
+    { key: "valor_final", label: "Valor final", type: "currency", getValue: (r) => r.valor_final },
+    { key: "valor_pendente", label: "Pendente", type: "currency", getValue: (r) => r.valor_pendente },
+    { key: "status_financeiro", label: "Financeiro", type: "badge", getValue: (r) => r.status_financeiro }
+  ],
+  overdue: [
+    { key: "pedido_id", label: "Pedido", type: "text", getValue: (r) => r.pedido_id },
+    { key: "cliente", label: "Cliente", type: "text", getValue: (r) => r.cliente },
+    { key: "vendedor", label: "Vendedor", type: "text", getValue: (r) => r.vendedor },
+    { key: "dias_atraso", label: "Dias atraso", type: "text", getValue: (r) => r.dias_atraso },
+    { key: "data_prevista", label: "Previsão", type: "date", getValue: (r) => r.data_prevista },
+    { key: "valor_final", label: "Valor final", type: "currency", getValue: (r) => r.valor_final },
+    { key: "valor_pendente", label: "Pendente", type: "currency", getValue: (r) => r.valor_pendente }
+  ],
+  pipeline: [
+    { key: "pedido_id", label: "Pedido", type: "text", getValue: (r) => r.pedido_id },
+    { key: "cliente", label: "Cliente", type: "text", getValue: (r) => r.cliente },
+    { key: "vendedor", label: "Vendedor", type: "text", getValue: (r) => r.vendedor },
+    { key: "data_cadastro", label: "Cadastro", type: "date", getValue: (r) => r.data_cadastro },
+    { key: "valor_final", label: "Valor final", type: "currency", getValue: (r) => r.valor_final },
+    { key: "situacao_grupo", label: "Situação", type: "badge", getValue: (r) => r.situacao_grupo }
+  ],
+  discount: [
+    { key: "pedido_id", label: "Pedido", type: "text", getValue: (r) => r.pedido_id },
+    { key: "cliente", label: "Cliente", type: "text", getValue: (r) => r.cliente },
+    { key: "vendedor", label: "Vendedor", type: "text", getValue: (r) => r.vendedor },
+    { key: "valor_bruto", label: "Bruto", type: "currency", getValue: (r) => r.valor_bruto },
+    { key: "valor_desconto", label: "Desconto", type: "currency", getValue: (r) => r.valor_desconto },
+    {
+      key: "pct_desconto",
+      label: "% desconto",
+      type: "text",
+      getValue: (r) => (r.valor_bruto > 0 ? `${((r.valor_desconto || 0) / r.valor_bruto * 100).toFixed(1).replace(".", ",")}%` : "—")
+    }
+  ]
+};
+
+const PEDIDOS_KPI_BLOCKS = [
+  {
+    title: "Valores",
+    cards: [
+      { label: "Valor bruto", key: "valorBruto" },
+      { label: "Descontos", key: "descontos" },
+      { label: "Valor final", key: "valorFinal" },
+      { label: "Valor pago", key: "valorPago" },
+      { label: "Valor pendente", key: "valorPendente" },
+      { label: "Ticket médio", key: "ticketMedio" }
+    ]
+  },
+  {
+    title: "Status",
+    cards: [
+      { label: "Total de pedidos", key: "totalPedidos" },
+      { label: "Pedidos entregues", key: "pedidosEntregues" },
+      { label: "Pedidos cancelados", key: "pedidosCancelados" },
+      { label: "Pedidos ativos", key: "pedidosAtivos" }
+    ]
+  },
+  {
+    title: "Aguardando Aprovação",
+    pipeline: true,
+    cards: [
+      {
+        label: "Pedidos aguardando aprovação",
+        key: "pipelineCount",
+        subtitleKey: "pipelineValor",
+        badge: "Não contabilizado na receita",
+        warning: true
+      }
+    ]
+  },
+  {
+    title: "Prazos",
+    cards: [
+      { label: "Desconto médio", key: "descontoMedio" },
+      { label: "Tempo médio de produção", key: "tempoMedioProducao" },
+      { label: "Atraso médio", key: "atrasoMedio" },
+      { label: "% entregue no prazo", key: "percentualEntregueNoPrazo" }
+    ]
+  }
+];
+
+const PEDIDOS_CHART_PANELS = [
+  { id: "revenue-month", title: "Receita por mês" },
+  { id: "orders-month", title: "Pedidos por mês" },
+  { id: "ticket-month", title: "Ticket médio por mês" },
+  { id: "orders-status", title: "Pedidos por situação" },
+  { id: "revenue-vendor", title: "Receita por vendedor" },
+  { id: "orders-vendor", title: "Pedidos por vendedor" },
+  { id: "pending-status", title: "Valor pendente por status" },
+  { id: "discount-month", title: "Desconto por mês" },
+  { id: "top-clients", title: "Top clientes por valor" },
+  { id: "on-time-delivery", title: "Entregues no prazo × atrasados" },
+  { id: "production-time-month", title: "Tempo médio de produção por mês" },
+  { id: "ticket-distribution", title: "Distribuição de ticket" }
+];
+
+const PEDIDOS_TABLES = [
+  { id: "overdue", title: "Pedidos atrasados", columns: "overdue", empty: "Nenhum pedido atrasado no recorte atual." },
+  { id: "delivered-pending", title: "Entregues com valor pendente", columns: "base", empty: "Nenhum pedido entregue com pendência." },
+  { id: "no-client", title: "Sem cliente", columns: "base", empty: "Nenhum pedido sem cliente no recorte atual." },
+  { id: "no-forecast", title: "Sem data prevista", columns: "base", empty: "Nenhum pedido sem data prevista." },
+  { id: "high-discount", title: "Desconto alto", columns: "discount", empty: "Nenhum pedido com desconto alto no recorte atual." },
+  { id: "pipeline", title: "Aguardando Aprovação", columns: "pipeline", empty: "Nenhum pedido em aprovação no recorte atual." }
 ];
 
 function renderFinanceiroPage(route) {
@@ -1079,6 +1254,157 @@ function mountFinanceiroDashboard() {
   mountFinanceTable("no-class", metrics.getContasSemClassificacao(contas), "base", FINANCE_TABLES[3].empty);
   mountFinanceTable("paid-no-date", metrics.getContasPagasSemData(contas), "base", FINANCE_TABLES[4].empty);
   mountFinanceTable("future", metrics.getContasFuturas(contas), "future", FINANCE_TABLES[5].empty);
+}
+
+function renderPedidosPage(route) {
+  if (!hasPedidosData()) {
+    return renderEmptyPage(route);
+  }
+
+  const kpiBlocks = PEDIDOS_KPI_BLOCKS.map((block) => {
+    const cards = block.cards
+      .map((card) =>
+        renderMetricCard(card.label, {
+          key: card.key,
+          subtitleKey: card.subtitleKey,
+          badge: card.badge,
+          warning: card.warning
+        })
+      )
+      .join("");
+    return renderMetricBlock(block.title, cards, { pipeline: Boolean(block.pipeline) });
+  }).join("");
+
+  const chartPanels = PEDIDOS_CHART_PANELS.map(
+    (panel) => `
+      <article class="chart-panel">
+        <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+        <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+      </article>
+    `
+  ).join("");
+
+  const tables = PEDIDOS_TABLES.map(
+    (table) => `
+      <article class="card">
+        <h3 class="chart-panel-title">${escapeHTML(table.title)}</h3>
+        <div data-ped-table="${table.id}"></div>
+      </article>
+    `
+  ).join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${kpiBlocks}
+    <section class="pedidos-charts-grid" aria-label="Gráficos de pedidos">
+      ${chartPanels}
+    </section>
+    <section class="pedidos-tables-grid" aria-label="Tabelas de exceção de pedidos">
+      ${tables}
+    </section>
+  `;
+}
+
+function disposePedidosCharts() {
+  if (window.MoldeCharts && pedidosChartInstances.length) {
+    window.MoldeCharts.disposePedidosCharts(pedidosChartInstances);
+  }
+  pedidosChartInstances = [];
+}
+
+function mountPedidosTable(id, rows, columnsKey, emptyMessage) {
+  const container = document.querySelector(`[data-ped-table="${id}"]`);
+  if (!container) {
+    return;
+  }
+  if (!rows.length) {
+    container.innerHTML = `<p class="executive-exception-empty">${escapeHTML(emptyMessage)}</p>`;
+    return;
+  }
+  window.MoldeTables.renderVirtualTable(container, {
+    rows,
+    columns: PEDIDOS_TABLE_COLUMNS[columnsKey]
+  });
+}
+
+function mountPedidosDashboard() {
+  if (getRouteFromHash() !== "pedidos" || !hasPedidosData() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const metrics = window.MoldeMetrics;
+  const kpis = metrics.computePedidosKpis(pedidos);
+  const format = metrics.formatCurrency;
+  const percent = metrics.formatPercent;
+
+  const metricMap = {
+    valorBruto: format(kpis.valorBruto),
+    descontos: format(kpis.descontos),
+    valorFinal: format(kpis.valorFinal),
+    valorPago: format(kpis.valorPago),
+    valorPendente: format(kpis.valorPendente),
+    ticketMedio: format(kpis.ticketMedio),
+    totalPedidos: String(kpis.totalPedidos),
+    pedidosEntregues: String(kpis.pedidosEntregues),
+    pedidosCancelados: String(kpis.pedidosCancelados),
+    pedidosAtivos: String(kpis.pedidosAtivos),
+    pipelineCount: String(kpis.pipelineCount),
+    descontoMedio: percent(kpis.descontoMedio),
+    tempoMedioProducao: Number.isFinite(kpis.tempoMedioProducao) ? `${kpis.tempoMedioProducao.toFixed(1).replace(".", ",")} dias` : "—",
+    atrasoMedio: Number.isFinite(kpis.atrasoMedio) ? `${kpis.atrasoMedio.toFixed(1).replace(".", ",")} dias` : "—",
+    percentualEntregueNoPrazo: percent(kpis.percentualEntregueNoPrazo)
+  };
+  const subtitleMap = {
+    pipelineValor: format(kpis.pipelineValor)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+    }
+  });
+  document.querySelectorAll("[data-metric-subtitle]").forEach((element) => {
+    const key = element.dataset.metricSubtitle;
+    if (subtitleMap[key] !== undefined) {
+      element.textContent = subtitleMap[key];
+    }
+  });
+
+  disposePedidosCharts();
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      revenueMonth: document.querySelector('[data-chart="revenue-month"]'),
+      ordersMonth: document.querySelector('[data-chart="orders-month"]'),
+      ticketMonth: document.querySelector('[data-chart="ticket-month"]'),
+      ordersStatus: document.querySelector('[data-chart="orders-status"]'),
+      revenueVendor: document.querySelector('[data-chart="revenue-vendor"]'),
+      ordersVendor: document.querySelector('[data-chart="orders-vendor"]'),
+      pendingStatus: document.querySelector('[data-chart="pending-status"]'),
+      discountMonth: document.querySelector('[data-chart="discount-month"]'),
+      topClients: document.querySelector('[data-chart="top-clients"]'),
+      onTimeDelivery: document.querySelector('[data-chart="on-time-delivery"]'),
+      productionTimeMonth: document.querySelector('[data-chart="production-time-month"]'),
+      ticketDistribution: document.querySelector('[data-chart="ticket-distribution"]')
+    };
+    pedidosChartInstances = window.MoldeCharts.renderPedidosCharts(containers, pedidos, theme);
+  }
+
+  mountPedidosTable("overdue", metrics.getPedidosAtrasados(pedidos), "overdue", PEDIDOS_TABLES[0].empty);
+  mountPedidosTable("delivered-pending", metrics.getPedidosEntreguesComPendencia(pedidos), "base", PEDIDOS_TABLES[1].empty);
+  mountPedidosTable("no-client", metrics.getPedidosSemCliente(pedidos), "base", PEDIDOS_TABLES[2].empty);
+  mountPedidosTable("no-forecast", metrics.getPedidosSemDataPrevista(pedidos), "base", PEDIDOS_TABLES[3].empty);
+  mountPedidosTable("high-discount", metrics.getPedidosDescontoAlto(pedidos), "discount", PEDIDOS_TABLES[4].empty);
+  mountPedidosTable("pipeline", metrics.getPedidosPipeline(pedidos), "pipeline", PEDIDOS_TABLES[5].empty);
 }
 
 function renderFindingItem(finding, severityLabel, severityClass) {
@@ -1551,6 +1877,12 @@ function attachGlobalInteractions() {
   });
 
   filterPanel?.addEventListener("change", (event) => {
+    const pedidoToggle = event.target.closest("[data-filter-pedido-toggle]");
+    if (pedidoToggle) {
+      filterState.pedidos[pedidoToggle.dataset.filterPedidoToggle] = pedidoToggle.checked;
+      onFilterStateChanged();
+      return;
+    }
     const toggleFlag = event.target.closest("[data-filter-toggle-flag]");
     if (toggleFlag) {
       filterState.contas[toggleFlag.dataset.filterToggleFlag] = toggleFlag.checked;
@@ -1660,6 +1992,9 @@ function onFilterStateChanged() {
   if (getRouteFromHash() === "financeiro" && hasContasData()) {
     mountFinanceiroDashboard();
   }
+  if (getRouteFromHash() === "pedidos" && hasPedidosData()) {
+    mountPedidosDashboard();
+  }
 }
 
 function attachRouteInteractions() {
@@ -1768,6 +2103,7 @@ function syncSidebarAccessibility() {
 function renderCurrentRoute(options = {}) {
   disposeExecutiveCharts();
   disposeFinanceCharts();
+  disposePedidosCharts();
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
@@ -1802,6 +2138,10 @@ function renderCurrentRoute(options = {}) {
 
   if (routeName === "financeiro" && hasContasData()) {
     mountFinanceiroDashboard();
+  }
+
+  if (routeName === "pedidos" && hasPedidosData()) {
+    mountPedidosDashboard();
   }
 }
 

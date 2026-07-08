@@ -21,8 +21,8 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 **Core value:** O usuário consegue carregar as planilhas reais do negócio e enxergar rapidamente receita, despesas, pendências, prazos e inconsistências com números confiáveis.
 
 **Current focus:** Phase 4 — Normalização, Estado e Tabelas
-**Status:** Ready to execute
-**Plans:** 3
+**Status:** Complete — 2026-07-08
+**Plans:** 3/3 executed
 
 ## Workflow
 
@@ -43,7 +43,7 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 | 1 | Complete | FND-01, FND-02, FND-03 | 100% |
 | 2 | Complete | FND-04, IMP-01, IMP-02, IMP-03 | 100% |
 | 3 | Complete | IMP-04, IMP-05, VAL-01..VAL-10, NRM-01, NRM-02 | 100% |
-| 4 | Pending | IMP-06, NRM-03..NRM-06, FLT-01..FLT-05, TBL-01, TBL-02 | 0% |
+| 4 | Complete | IMP-06, NRM-03..NRM-06, FLT-01..FLT-05, TBL-01, TBL-02 | 100% |
 | 5 | Pending | EXE-01..EXE-04 | 0% |
 | 6 | Pending | FIN-01..FIN-03 | 0% |
 | 7 | Pending | ORD-01..ORD-03 | 0% |
@@ -61,8 +61,8 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 
 ## Next Step
 
-Run `/gsd-execute-phase 4` to implement normalization, persistence, filters and tables.
+Run `/gsd-discuss-phase 5` or `/gsd-plan-phase 5` for the executive dashboard.
 
 ---
 *Initialized: 2026-07-07*
-*Last activity: 2026-07-08 — Phase 4 planned (3 plans in 3 waves)*
+*Last activity: 2026-07-08 — Phase 4 executed (normalization, store, filters, tables)*

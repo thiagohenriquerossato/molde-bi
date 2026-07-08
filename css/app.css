@@ -530,6 +530,120 @@ input:disabled,
   line-height: 1.5;
 }
 
+.validation-panel {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.validation-panel h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.validation-panel-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.validation-block {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+}
+
+.validation-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.validation-block-heading h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.validation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.validation-findings {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.validation-findings h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.validation-findings ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.validation-finding {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.validation-finding-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.validation-finding--critical {
+  border: 1px solid color-mix(in srgb, var(--danger-fg) 25%, transparent);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.validation-finding--warning {
+  border: 1px solid color-mix(in srgb, var(--warning-fg) 25%, transparent);
+  background: color-mix(in srgb, var(--warning-fg) 10%, var(--card));
+  color: var(--foreground);
+}
+
+.validation-expand {
+  justify-self: start;
+}
+
+.validation-cta {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.validation-cta-helper {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
 .card-heading {
   display: grid;
   gap: var(--space-3);
@@ -649,6 +763,113 @@ input:disabled,
   color: var(--muted-foreground);
   font-size: 13px;
   font-weight: 800;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-6) var(--space-2);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 12px;
+}
+
+.filter-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  padding: var(--space-4) var(--space-6);
+}
+
+.filter-panel[hidden],
+.filter-chips[hidden] {
+  display: none !important;
+}
+
+.app-shell[data-filter-open="true"] .filter-panel {
+  display: block;
+}
+
+.filter-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.filter-panel fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin: 0;
+}
+
+.filter-panel legend {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 var(--space-1);
+}
+
+.filter-panel-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.base-dados-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.base-dados-tab {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.base-dados-tab[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.table-virtual-viewport {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.data-table-virtual {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table-virtual thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--table-header, var(--muted));
+  cursor: pointer;
+}
+
+.data-table-row-warning {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.filter-active-banner {
+  margin-bottom: var(--space-3);
 }
 
 @media (max-width: 1023px) {

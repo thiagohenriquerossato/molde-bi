@@ -20,9 +20,9 @@ const uploadSources = {
 };
 
 const importState = {
-  pedidos: { status: "pending", metadata: null, error: "" },
-  contas: { status: "pending", metadata: null, error: "" },
-  indicadores: { status: "optional-empty", metadata: null, error: "" }
+  pedidos: { status: "pending", metadata: null, validationReport: null, error: "" },
+  contas: { status: "pending", metadata: null, validationReport: null, error: "" },
+  indicadores: { status: "optional-empty", metadata: null, validationReport: null, error: "" }
 };
 
 const uploadInputAttributes = {
@@ -88,10 +88,12 @@ const routes = {
   "base-dados": {
     eyebrow: "Dados normalizados",
     title: "Base de Dados",
-    description: "Tabelas internas limpas para auditoria e exportação futura.",
+    description: "Tabelas internas limpas para auditoria e exportação.",
+    badge: "Dados normalizados",
     emptyTitle: "Base normalizada vazia",
     emptyBody: "As tabelas normalizadas serão exibidas após importação, validação e normalização.",
-    icon: "BD"
+    icon: "BD",
+    render: renderBaseDadosPage
   },
   metas: {
     eyebrow: "Indicadores opcionais",
@@ -116,9 +118,22 @@ const sidebarCloseTargets = document.querySelectorAll("[data-sidebar-close]");
 const themeToggle = document.querySelector("[data-theme-toggle]");
 const topbarImportBadge = document.querySelector(".topbar-actions .badge");
 const topbarUploadButton = document.querySelector(".topbar-actions .button-primary");
+const topbarSearchInput = document.querySelector("[data-global-search]");
+const filterPanel = document.querySelector("[data-filter-panel]");
+const filterChips = document.querySelector("[data-filter-chips]");
+const filterToggle = document.querySelector("[data-filter-toggle]");
 const themeStorageKey = "molde-theme";
 const mobileQuery = window.matchMedia("(max-width: 767px)");
+const expandedWarningBlocks = new Set();
 let shouldFocusPendingUpload = false;
+const appState = { dataset: null, restoredFromStore: false };
+let filterState = { search: "" };
+let baseDadosTab = "pedidos";
+const tableSortState = {
+  pedidos: { key: null, direction: null },
+  contas: { key: null, direction: null },
+  indicadores: { key: null, direction: null }
+};
 const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short"
@@ -211,6 +226,237 @@ function pluralizeRow(count) {
   return count === 1 ? "1 linha" : `${count} linhas`;
 }
 
+function hasDataset() {
+  return Boolean(appState.dataset && (appState.dataset.pedidos?.length || appState.dataset.contas?.length || appState.dataset.indicadores?.length));
+}
+
+function hydrateImportStateFromMeta(snapshot) {
+  if (!snapshot?.importMeta) {
+    return;
+  }
+  Object.keys(uploadSources).forEach((kind) => {
+    const meta = snapshot.importMeta[kind];
+    if (!meta) {
+      return;
+    }
+    importState[kind] = {
+      status: "validated",
+      metadata: {
+        fileName: meta.fileName,
+        importedAt: meta.importedAt,
+        sheetNames: meta.sheetNames || [],
+        rowCount: meta.rowCount || 0,
+        primarySheetName: meta.sheetNames?.[0] || "",
+        monthlySheetNames: kind === "contas" ? meta.sheetNames || [] : []
+      },
+      validationReport: {
+        status: meta.validationStatus || "valid",
+        summary: { criticalCount: 0, warningCount: 0, validRowCount: meta.rowCount || 0 },
+        criticalErrors: [],
+        warnings: []
+      },
+      error: ""
+    };
+  });
+}
+
+function syncTopbarSearch() {
+  if (!topbarSearchInput) {
+    return;
+  }
+  const enabled = hasDataset();
+  topbarSearchInput.disabled = !enabled;
+  if (enabled) {
+    topbarSearchInput.removeAttribute("aria-disabled");
+    topbarSearchInput.value = filterState.search || "";
+  } else {
+    topbarSearchInput.setAttribute("aria-disabled", "true");
+    topbarSearchInput.value = "";
+  }
+}
+
+function renderFilterChips() {
+  if (!filterChips || !window.MoldeFilters) {
+    return;
+  }
+  const chips = window.MoldeFilters.getActiveChips(filterState);
+  if (!chips.length) {
+    filterChips.hidden = true;
+    filterChips.innerHTML = "";
+    return;
+  }
+  filterChips.hidden = false;
+  filterChips.innerHTML = chips
+    .map(
+      (chip) => `
+        <span class="filter-chip">
+          ${escapeHTML(chip.label)}
+          <button type="button" class="button button-ghost" data-filter-chip-remove="${chip.id}" aria-label="Remover filtro">×</button>
+        </span>
+      `
+    )
+    .join("");
+}
+
+function renderFilterPanelContent() {
+  if (!filterPanel) {
+    return;
+  }
+  if (!hasDataset()) {
+    filterPanel.innerHTML = `<p class="helper-text">Carregue planilhas para filtrar dados.</p>`;
+    return;
+  }
+
+  const pedidos = appState.dataset?.pedidos || [];
+  const contas = appState.dataset?.contas || [];
+
+  const renderMulti = (id, label, values, selected, group) => {
+    const options = values
+      .map((value) => {
+        const isSelected = selected.includes(value);
+        return `<option value="${escapeHTML(value)}" ${isSelected ? "selected" : ""}>${escapeHTML(value)}</option>`;
+      })
+      .join("");
+    return `
+      <label>
+        ${label}
+        <select multiple data-filter-multi="${group}:${id}" size="4">${options}</select>
+      </label>
+    `;
+  };
+
+  filterPanel.innerHTML = `
+    <div class="filter-panel-grid">
+      <label>Ano<input type="number" data-filter-field="year" value="${filterState.year ?? ""}" min="2020" max="2035"></label>
+      <label>Mês<input type="number" data-filter-field="month" value="${filterState.month ?? ""}" min="1" max="12"></label>
+      <label>Valor mínimo<input type="number" step="0.01" data-filter-field="valueMin" value="${filterState.valueMin ?? ""}"></label>
+      <label>Valor máximo<input type="number" step="0.01" data-filter-field="valueMax" value="${filterState.valueMax ?? ""}"></label>
+      <fieldset>
+        <legend>Pedidos</legend>
+        ${renderMulti("situacaoGrupo", "Grupo", window.MoldeFilters.getDistinctValues(pedidos, "situacao_grupo"), filterState.pedidos.situacaoGrupo, "pedidos")}
+        ${renderMulti("vendedor", "Vendedor", window.MoldeFilters.getDistinctValues(pedidos, "vendedor"), filterState.pedidos.vendedor, "pedidos")}
+        ${renderMulti("cliente", "Cliente", window.MoldeFilters.getDistinctValues(pedidos, "cliente"), filterState.pedidos.cliente, "pedidos")}
+      </fieldset>
+      <fieldset>
+        <legend>Contas</legend>
+        ${renderMulti("statusPagamento", "Status", window.MoldeFilters.getDistinctValues(contas, "status_pagamento"), filterState.contas.statusPagamento, "contas")}
+        ${renderMulti("fornecedor", "Fornecedor", window.MoldeFilters.getDistinctValues(contas, "fornecedor"), filterState.contas.fornecedor, "contas")}
+        ${renderMulti("categoria", "Categoria", window.MoldeFilters.getDistinctValues(contas, "categoria"), filterState.contas.categoria, "contas")}
+      </fieldset>
+    </div>
+    <div class="filter-panel-actions">
+      <button class="button button-outline" type="button" data-filter-clear>Limpar filtros</button>
+    </div>
+  `;
+}
+
+function mountBaseDadosTable() {
+  const container = document.querySelector("[data-base-table]");
+  if (!container || !window.MoldeTables || !window.MoldeFilters || !appState.dataset) {
+    return;
+  }
+
+  const rows = appState.dataset[baseDadosTab] || [];
+  const filtered = window.MoldeFilters.applyFilters(rows, baseDadosTab, filterState);
+  const columns = window.MoldeTables.COLUMN_SETS[baseDadosTab].filter((col) =>
+    window.MoldeTables.getColumnVisibility(baseDadosTab).includes(col.key)
+  );
+  const sort = tableSortState[baseDadosTab];
+  const sorted = window.MoldeTables.sortRows(filtered, sort.key, sort.direction, columns);
+  const countEl = document.querySelector("[data-base-count]");
+  if (countEl) {
+    countEl.textContent = `${filtered.length} de ${rows.length} registros`;
+  }
+
+  window.MoldeTables.renderVirtualTable(container, {
+    rows: sorted,
+    columns,
+    sort,
+    onSort: (nextSort) => {
+      tableSortState[baseDadosTab] = nextSort;
+      mountBaseDadosTable();
+    },
+    rowClassFn: (row) => (row.validationAlerts?.length ? "data-table-row-warning" : "")
+  });
+}
+
+function renderBaseDadosPage(route) {
+  if (!hasDataset()) {
+    return renderEmptyPage(route);
+  }
+
+  const tabs = [
+    { id: "pedidos", label: "Pedidos" },
+    { id: "contas", label: "Contas a pagar" }
+  ];
+  if (appState.dataset.indicadores?.length) {
+    tabs.push({ id: "indicadores", label: "Indicadores" });
+  }
+
+  return `
+    ${createPageHeader(route)}
+    <p class="helper-text filter-active-banner">Filtros globais da topbar afetam esta tabela. Dashboards analíticos chegam na Fase 5.</p>
+    <div class="base-dados-tabs" role="tablist" aria-label="Tabelas normalizadas">
+      ${tabs
+        .map(
+          (tab) => `
+            <button
+              class="base-dados-tab"
+              type="button"
+              role="tab"
+              data-base-tab="${tab.id}"
+              aria-selected="${baseDadosTab === tab.id}"
+            >
+              ${tab.label}
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+    <article class="card">
+      <div class="table-toolbar">
+        <div>
+          <h2>${tabs.find((tab) => tab.id === baseDadosTab)?.label || "Dados"}</h2>
+          <p data-base-count>0 registros</p>
+        </div>
+        <div class="table-toolbar-actions">
+          <button class="button button-outline" type="button" data-base-columns>Colunas</button>
+          <button class="button button-outline" type="button" data-base-export>Exportar</button>
+        </div>
+      </div>
+      <div data-base-table></div>
+    </article>
+  `;
+}
+
+function getValidationStatus(kind) {
+  return importState[kind]?.validationReport?.status || null;
+}
+
+function canContinueToDashboards() {
+  return requiredImportKinds.every((kind) => {
+    const status = getValidationStatus(kind);
+    return status === "valid" || status === "valid_with_warnings";
+  });
+}
+
+function getValidationCardBadge(kind) {
+  const state = importState[kind];
+  if (state.status === "validating") {
+    return { text: "Validando...", className: "badge-warning" };
+  }
+  if (state.status === "validated" && state.validationReport) {
+    if (state.validationReport.status === "valid") {
+      return { text: "Válido", className: "badge-success" };
+    }
+    if (state.validationReport.status === "valid_with_warnings") {
+      return { text: "Com informações", className: "badge-warning" };
+    }
+    return { text: "Inválido", className: "badge-danger" };
+  }
+  return null;
+}
+
 function createPageHeader(route) {
   return `
     <header class="page-header">
@@ -239,12 +485,162 @@ function renderEmptyPage(route) {
   `;
 }
 
+function renderFindingItem(finding, severityLabel, severityClass) {
+  return `
+    <li class="validation-finding ${severityClass}">
+      <span class="validation-finding-label">${severityLabel}</span>
+      <strong>Linha ${finding.excelRow} · ${escapeHTML(finding.businessId)}</strong>
+      <span>${escapeHTML(finding.message)}</span>
+    </li>
+  `;
+}
+
+function renderWarningsList(kind, warnings) {
+  if (!warnings.length) {
+    return "";
+  }
+
+  const isExpanded = expandedWarningBlocks.has(kind);
+  const visible = isExpanded ? warnings : warnings.slice(0, 5);
+  const hiddenCount = Math.max(warnings.length - 5, 0);
+
+  return `
+    <div class="validation-findings validation-findings--warnings">
+      <h4>Alertas (${warnings.length})</h4>
+      <ul>
+        ${visible.map((finding) => renderFindingItem(finding, "Alerta", "validation-finding--warning")).join("")}
+      </ul>
+      ${warnings.length > 5 ? `
+        <button
+          class="button button-outline validation-expand"
+          type="button"
+          data-validation-expand="${kind}"
+          aria-expanded="${isExpanded}"
+        >
+          ${isExpanded ? "Recolher" : `Ver todos (${warnings.length})`}
+        </button>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderValidationBlock(kind) {
+  const source = uploadSources[kind];
+  const state = importState[kind];
+
+  if (kind === "indicadores" && state.status === "optional-empty") {
+    return "";
+  }
+
+  if (!state.validationReport && state.status !== "reading" && state.status !== "validating") {
+    return `
+      <article class="validation-block" data-validation-block="${kind}">
+        <div class="validation-block-heading">
+          <h3>${source.title}</h3>
+          <span class="badge badge-neutral">Aguardando</span>
+        </div>
+        <p class="helper-text">${source.required ? "Aguardando planilha obrigatória." : "Opcional não carregado."}</p>
+      </article>
+    `;
+  }
+
+  if (state.status === "reading" || state.status === "validating") {
+    return `
+      <article class="validation-block" data-validation-block="${kind}">
+        <div class="validation-block-heading">
+          <h3>${source.title}</h3>
+          <span class="badge badge-warning">Validando...</span>
+        </div>
+        <p class="helper-text">Validação em andamento.</p>
+      </article>
+    `;
+  }
+
+  const report = state.validationReport;
+  if (!report) {
+    return "";
+  }
+
+  const blockBadge = report.status === "valid"
+    ? { text: "Válida", className: "badge-success" }
+    : report.status === "valid_with_warnings"
+      ? { text: "Válida com alertas", className: "badge-warning" }
+      : { text: "Inválida", className: "badge-danger" };
+
+  const criticalItems = report.criticalErrors.slice(0, 10);
+
+  return `
+    <article class="validation-block" data-validation-block="${kind}">
+      <div class="validation-block-heading">
+        <h3>${source.title}</h3>
+        <span class="badge ${blockBadge.className}">${blockBadge.text}</span>
+      </div>
+      <div class="validation-summary">
+        <span><strong>${report.summary.criticalCount}</strong> erros críticos</span>
+        <span><strong>${report.summary.warningCount}</strong> alertas</span>
+        <span><strong>${report.summary.validRowCount}</strong> linhas válidas</span>
+      </div>
+      ${criticalItems.length ? `
+        <div class="validation-findings validation-findings--critical">
+          <h4>Erros críticos (${report.summary.criticalCount})</h4>
+          <ul>
+            ${criticalItems.map((finding) => renderFindingItem(finding, "Erro crítico", "validation-finding--critical")).join("")}
+          </ul>
+        </div>
+      ` : ""}
+      ${renderWarningsList(kind, report.warnings)}
+      ${report.status === "invalid" ? `
+        <button class="button button-outline" type="button" data-fix-upload="${kind}">Corrigir planilha</button>
+      ` : ""}
+    </article>
+  `;
+}
+
+function renderValidationPanel() {
+  const blocks = Object.keys(uploadSources)
+    .map((kind) => renderValidationBlock(kind))
+    .filter(Boolean)
+    .join("");
+
+  if (!blocks) {
+    return "";
+  }
+
+  return `
+    <section class="validation-panel" aria-live="polite">
+      <h2>Resultado da validação</h2>
+      <div class="validation-panel-grid">${blocks}</div>
+    </section>
+  `;
+}
+
+function renderDashboardCta() {
+  const enabled = canContinueToDashboards();
+  return `
+    <div class="validation-cta">
+      <button
+        class="button button-primary"
+        type="button"
+        data-continue-dashboards
+        ${enabled ? "" : "disabled aria-disabled=\"true\""}
+      >
+        Continuar para dashboards
+      </button>
+      <p class="helper-text validation-cta-helper" ${enabled ? "hidden" : ""}>
+        Corrija os erros críticos em Pedidos e Contas para continuar.
+      </p>
+    </div>
+  `;
+}
+
 function renderUploadPage(route) {
   return `
     ${createPageHeader(route)}
     <div class="upload-grid" aria-label="Planilhas esperadas">
       ${Object.keys(uploadSources).map(createUploadCard).join("")}
     </div>
+    ${renderValidationPanel()}
+    ${renderDashboardCta()}
     <section class="content-grid">
       <article class="card readiness-card">
         <span class="badge badge-success">Pronto para abrir</span>
@@ -320,23 +716,44 @@ function getUploadCardView(kind) {
   const state = importState[kind];
   const metadata = state.metadata;
   const isReading = state.status === "reading";
-  const isRead = state.status === "read";
+  const isValidating = state.status === "validating";
+  const isValidated = state.status === "validated";
   const isError = state.status === "error";
+  const validationBadge = getValidationCardBadge(kind);
   const initialBadge = source.required ? "Obrigatório" : "Opcional não carregado";
 
-  if (isRead && metadata) {
+  if (isValidated && metadata && validationBadge) {
+    const report = state.validationReport;
     return {
-      badgeText: "Lido",
-      badgeClass: "badge-success",
+      badgeText: validationBadge.text,
+      badgeClass: validationBadge.className,
       buttonText: "Substituir planilha",
-      helperText: "Leitura inicial concluída. Validação estrutural entra na próxima fase.",
+      helperText: report?.status === "invalid"
+        ? "Corrija os erros críticos e substitua a planilha."
+        : "Validação concluída para esta fonte.",
       fileName: metadata.fileName,
       metadataHTML: createMetadataHTML(metadata),
       errorHTML: "",
-      statusText: "Planilha lida.",
-      previewText: `${pluralizeSheet(metadata.sheetNames.length)}, ${pluralizeRow(metadata.rowCount)}`,
-      cardClass: "",
+      statusText: report?.status === "invalid" ? "Planilha inválida." : "Planilha validada.",
+      previewText: `${report?.summary.criticalCount || 0} críticos, ${report?.summary.warningCount || 0} alertas`,
+      cardClass: report?.status === "invalid" ? "upload-card-highlight" : "",
       disabledAttribute: ""
+    };
+  }
+
+  if (isValidating && metadata) {
+    return {
+      badgeText: "Validando...",
+      badgeClass: "badge-warning",
+      buttonText: "Validando...",
+      helperText: "Validação automática em andamento.",
+      fileName: metadata.fileName,
+      metadataHTML: createMetadataHTML(metadata),
+      errorHTML: "",
+      statusText: "Validando...",
+      previewText: "Validação em andamento",
+      cardClass: "upload-card-highlight",
+      disabledAttribute: "disabled aria-disabled=\"true\""
     };
   }
 
@@ -412,8 +829,19 @@ async function handleUploadSelection(kind, file) {
   setImportStatus(kind, "reading");
 
   try {
-    const metadata = await window.MoldeImporter.readWorkbookFile(file, kind);
-    setImportStatus(kind, "read", { metadata });
+    const { workbook, metadata } = await window.MoldeImporter.readWorkbookBuffer(file, kind);
+    setImportStatus(kind, "validating", { metadata });
+    const validationReport = window.MoldeValidation.validateWorkbook(workbook, kind);
+
+    if (validationReport.status === "valid" || validationReport.status === "valid_with_warnings") {
+      const { rows } = window.MoldeNormalizers.normalizeWorkbook(workbook, kind, validationReport);
+      appState.dataset = await window.MoldeStore.upsertSource(kind, rows, metadata, validationReport);
+    }
+
+    setImportStatus(kind, "validated", { metadata, validationReport });
+    syncTopbarSearch();
+    renderFilterPanelContent();
+    renderFilterChips();
   } catch (error) {
     setImportStatus(kind, "error", {
       error: error instanceof Error ? error.message : "Não foi possível ler a planilha."
@@ -426,35 +854,68 @@ function setImportStatus(kind, status, payload = {}) {
 
   importState[kind] = {
     status,
-    metadata: payload.metadata || (status === "reading" ? previousMetadata : null),
+    metadata: payload.metadata || (status === "reading" || status === "validating" ? previousMetadata : null),
+    validationReport: payload.validationReport ?? (status === "reading" ? null : importState[kind].validationReport),
     error: payload.error || ""
   };
 
+  if (status === "reading") {
+    importState[kind].validationReport = null;
+  }
+
   renderCurrentRoute({ preserveFocus: true });
   updateTopbarImportStatus();
+  updateDashboardCta();
 }
 
 function getRequiredImportCount() {
-  return requiredImportKinds.filter((kind) => importState[kind].status === "read").length;
+  return requiredImportKinds.filter((kind) => importState[kind].status === "validated").length;
 }
 
 function updateTopbarImportStatus() {
   const readCount = getRequiredImportCount();
-  const statusText = readCount === 0
-    ? "Sem dados importados"
-    : readCount === 1
-      ? "1 de 2 obrigatórias lida"
-      : "Bases obrigatórias lidas";
+  const canContinue = canContinueToDashboards();
+  let statusText = "Sem dados importados";
+  let badgeClass = "badge-info";
+
+  if (readCount === 1) {
+    statusText = "1 de 2 obrigatórias validada";
+  } else if (readCount === 2) {
+    statusText = canContinue ? "Bases validadas" : "Validação pendente";
+    badgeClass = canContinue ? "badge-success" : "badge-warning";
+  }
 
   if (topbarImportBadge) {
     topbarImportBadge.textContent = statusText;
-    topbarImportBadge.className = `badge ${readCount === requiredImportKinds.length ? "badge-success" : "badge-info"}`;
+    topbarImportBadge.className = `badge ${badgeClass}`;
   }
 
   if (topbarUploadButton) {
     topbarUploadButton.disabled = false;
     topbarUploadButton.removeAttribute("aria-disabled");
     topbarUploadButton.textContent = readCount === requiredImportKinds.length ? "Revisar importação" : "Selecionar planilha";
+  }
+}
+
+function updateDashboardCta() {
+  const button = document.querySelector("[data-continue-dashboards]");
+  const helper = document.querySelector(".validation-cta-helper");
+  if (!button) {
+    return;
+  }
+
+  const enabled = canContinueToDashboards();
+  button.disabled = !enabled;
+  if (enabled) {
+    button.removeAttribute("aria-disabled");
+    if (helper) {
+      helper.hidden = true;
+    }
+  } else {
+    button.setAttribute("aria-disabled", "true");
+    if (helper) {
+      helper.hidden = false;
+    }
   }
 }
 
@@ -465,11 +926,75 @@ function focusFirstPendingUploadCard() {
     return;
   }
 
-  const pendingKind = requiredImportKinds.find((kind) => importState[kind].status !== "read") || "pedidos";
+  const pendingKind = requiredImportKinds.find((kind) => importState[kind].status !== "validated") || "pedidos";
   const card = document.querySelector(`[data-upload-card="${pendingKind}"]`);
   card?.focus({ preventScroll: true });
   card?.scrollIntoView({ behavior: "smooth", block: "center" });
   card?.classList.add("upload-card-highlight");
+}
+
+function attachGlobalInteractions() {
+  filterToggle?.addEventListener("click", () => {
+    const open = shell.dataset.filterOpen === "true";
+    shell.dataset.filterOpen = String(!open);
+    filterToggle.setAttribute("aria-expanded", String(!open));
+    filterPanel.hidden = open;
+    if (!open) {
+      renderFilterPanelContent();
+    }
+  });
+
+  filterPanel?.addEventListener("change", (event) => {
+    const multi = event.target.closest("[data-filter-multi]");
+    if (multi) {
+      const [group, field] = multi.dataset.filterMulti.split(":");
+      filterState[group][field] = Array.from(multi.selectedOptions).map((option) => option.value);
+      onFilterStateChanged();
+      return;
+    }
+    const field = event.target.closest("[data-filter-field]");
+    if (field) {
+      const key = field.dataset.filterField;
+      const value = field.value === "" ? null : field.type === "number" ? Number(field.value) : field.value;
+      filterState[key] = value;
+      onFilterStateChanged();
+    }
+  });
+
+  filterPanel?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-filter-clear]")) {
+      filterState = window.MoldeFilters.clearAll();
+      onFilterStateChanged();
+      renderFilterPanelContent();
+    }
+  });
+
+  filterChips?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-filter-chip-remove]");
+    if (!button) {
+      return;
+    }
+    const chip = window.MoldeFilters.getActiveChips(filterState).find((item) => item.id === button.dataset.filterChipRemove);
+    if (chip?.path?.[0]) {
+      filterState[chip.path[0]] = chip.path[0] === "search" ? "" : null;
+      onFilterStateChanged();
+      renderFilterPanelContent();
+    }
+  });
+
+  topbarSearchInput?.addEventListener("input", (event) => {
+    filterState.search = event.target.value;
+    onFilterStateChanged();
+    renderFilterChips();
+  });
+}
+
+function onFilterStateChanged() {
+  renderFilterChips();
+  syncTopbarSearch();
+  if (getRouteFromHash() === "base-dados") {
+    mountBaseDadosTable();
+  }
 }
 
 function attachRouteInteractions() {
@@ -492,6 +1017,65 @@ function attachRouteInteractions() {
     trigger.addEventListener("click", () => {
       window.location.hash = "upload";
     });
+  });
+
+  document.querySelectorAll("[data-fix-upload]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const input = document.querySelector(`[data-upload-input="${trigger.dataset.fixUpload}"]`);
+      input?.click();
+    });
+  });
+
+  document.querySelectorAll("[data-validation-expand]").forEach((trigger) => {
+    trigger.addEventListener("click", () => {
+      const kind = trigger.dataset.validationExpand;
+      if (expandedWarningBlocks.has(kind)) {
+        expandedWarningBlocks.delete(kind);
+      } else {
+        expandedWarningBlocks.add(kind);
+      }
+      renderCurrentRoute({ preserveFocus: true });
+    });
+  });
+
+  document.querySelector("[data-continue-dashboards]")?.addEventListener("click", () => {
+    if (canContinueToDashboards()) {
+      window.location.hash = "executivo";
+    }
+  });
+
+  document.querySelectorAll("[data-base-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      baseDadosTab = tab.dataset.baseTab;
+      renderCurrentRoute({ preserveFocus: true });
+    });
+  });
+
+  document.querySelector("[data-base-export]")?.addEventListener("click", () => {
+    if (!appState.dataset || !window.MoldeTables || !window.MoldeFilters) {
+      return;
+    }
+    const rows = window.MoldeFilters.applyFilters(appState.dataset[baseDadosTab] || [], baseDadosTab, filterState);
+    const columns = window.MoldeTables.COLUMN_SETS[baseDadosTab].filter((col) =>
+      window.MoldeTables.getColumnVisibility(baseDadosTab).includes(col.key)
+    );
+    const date = new Date().toISOString().slice(0, 10);
+    window.MoldeTables.exportCsv(rows, columns, `molde-${baseDadosTab}-${date}.csv`);
+  });
+
+  document.querySelector("[data-base-columns]")?.addEventListener("click", () => {
+    const all = window.MoldeTables.COLUMN_SETS[baseDadosTab];
+    const visible = new Set(window.MoldeTables.getColumnVisibility(baseDadosTab));
+    const next = all.filter((col) => !visible.has(col.key)).map((col) => col.key);
+    if (!next.length) {
+      window.MoldeTables.setColumnVisibility(
+        baseDadosTab,
+        all.filter((col) => col.defaultVisible).map((col) => col.key)
+      );
+    } else {
+      window.MoldeTables.setColumnVisibility(baseDadosTab, [...visible, ...next.slice(0, 2)]);
+    }
+    mountBaseDadosTable();
   });
 }
 
@@ -535,16 +1119,55 @@ function renderCurrentRoute(options = {}) {
   if (!options.preserveFocus) {
     pageArea.focus({ preventScroll: true });
   }
+
+  updateDashboardCta();
+  syncTopbarSearch();
+  renderFilterChips();
+
+  if (routeName === "base-dados" && hasDataset()) {
+    mountBaseDadosTable();
+  }
 }
 
 function renderRoute() {
   renderCurrentRoute();
 }
 
-applyTheme(getInitialTheme());
-syncSidebarAccessibility();
-renderRoute();
-updateTopbarImportStatus();
+async function bootstrap() {
+  applyTheme(getInitialTheme());
+  syncSidebarAccessibility();
+  attachGlobalInteractions();
+
+  if (window.MoldeFilters) {
+    filterState = window.MoldeFilters.createDefaultState();
+  }
+
+  if (window.MoldeStore) {
+    try {
+      const snapshot = await window.MoldeStore.loadDataset();
+      if (snapshot) {
+        appState.dataset = snapshot;
+        appState.restoredFromStore = true;
+        hydrateImportStateFromMeta(snapshot);
+        const currentHash = window.location.hash.replace("#", "");
+        if (!currentHash || currentHash === "upload") {
+          window.location.hash = "executivo";
+        }
+      }
+    } catch {
+      appState.dataset = null;
+    }
+  }
+
+  renderRoute();
+  updateTopbarImportStatus();
+  updateDashboardCta();
+  syncTopbarSearch();
+  renderFilterPanelContent();
+  renderFilterChips();
+}
+
+bootstrap();
 
 window.addEventListener("hashchange", renderRoute);
 mobileQuery.addEventListener("change", syncSidebarAccessibility);

@@ -79,18 +79,22 @@
             <span aria-hidden="true">Menu</span>
           </button>
 
-          <label class="search-box" aria-label="Busca visual indisponível nesta fase">
-            <span class="sr-only">Buscar páginas, pedidos, contas</span>
+          <label class="search-box" aria-label="Busca nos dados normalizados">
+            <span class="sr-only">Buscar pedidos, contas e indicadores</span>
             <span class="search-icon" aria-hidden="true">Busca</span>
-            <input type="search" placeholder="Buscar páginas, pedidos, contas..." disabled>
+            <input type="search" data-global-search placeholder="Buscar pedidos, contas..." disabled>
           </label>
 
           <div class="topbar-actions">
             <span class="badge badge-info">Sem dados importados</span>
+            <button class="button button-outline" type="button" data-filter-toggle aria-expanded="false" aria-controls="filter-panel">Filtros</button>
             <button class="button button-outline" type="button" data-theme-toggle aria-label="Alternar tema" aria-pressed="false">Alternar tema</button>
             <button class="button button-primary" type="button" disabled aria-disabled="true">Selecionar planilha</button>
           </div>
         </header>
+
+        <div class="filter-chips" data-filter-chips hidden></div>
+        <aside class="filter-panel" id="filter-panel" data-filter-panel hidden aria-label="Filtros globais"></aside>
 
         <main class="page-area" id="conteudo-principal" tabindex="-1">
           <section class="page-view" data-route-view>
@@ -192,6 +196,14 @@
     <script src="vendor/sheetjs/xlsx.full.min.js" defer></script>
     <script src="vendor/echarts/echarts.min.js" defer></script>
     <script src="js/importer.js" defer></script>
+    <script src="js/schemas.js" defer></script>
+    <script src="js/cleaners.js" defer></script>
+    <script src="js/validators.js" defer></script>
+    <script src="js/validation.js" defer></script>
+    <script src="js/normalizers.js" defer></script>
+    <script src="js/store.js" defer></script>
+    <script src="js/filters.js" defer></script>
+    <script src="js/tables.js" defer></script>
     <script src="js/app.js" defer></script>
   </body>
 </html>

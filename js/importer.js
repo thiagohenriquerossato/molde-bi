@@ -20,11 +20,19 @@
     }
   }
 
-  async function readWorkbookFile(file, kind) {
+  async function readWorkbookBuffer(file, kind) {
     assertReadableFile(file);
     const buffer = await file.arrayBuffer();
     const workbook = window.XLSX.read(buffer);
-    return getWorkbookMetadata(workbook, file, kind);
+    return {
+      workbook,
+      metadata: getWorkbookMetadata(workbook, file, kind)
+    };
+  }
+
+  async function readWorkbookFile(file, kind) {
+    const result = await readWorkbookBuffer(file, kind);
+    return result.metadata;
   }
 
   function getWorkbookMetadata(workbook, file, kind) {
@@ -67,6 +75,7 @@
   }
 
   window.MoldeImporter = {
+    readWorkbookBuffer,
     readWorkbookFile,
     getWorkbookMetadata,
     getPrimarySheetName,

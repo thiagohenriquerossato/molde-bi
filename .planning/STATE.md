@@ -22,7 +22,7 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 
 **Current focus:** Phase 4 — Normalização, Estado e Tabelas
 **Status:** Ready to execute
-**Plans:** 0
+**Plans:** 3
 
 ## Workflow
 
@@ -61,8 +61,8 @@ See: `.planning/PROJECT.md` (updated 2026-07-07)
 
 ## Next Step
 
-Run `/gsd-plan-phase 4` to plan normalization, persistence, filters and tables.
+Run `/gsd-execute-phase 4` to implement normalization, persistence, filters and tables.
 
 ---
 *Initialized: 2026-07-07*
-*Last activity: 2026-07-08 — Phase 4 context complete (normalization, derived fields, filters, tables)*
+*Last activity: 2026-07-08 — Phase 4 planned (3 plans in 3 waves)*

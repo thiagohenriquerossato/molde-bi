@@ -72,6 +72,24 @@ const routes = {
     icon: "PD",
     render: renderPedidosPage
   },
+  clientes: {
+    eyebrow: "Relacionamento comercial",
+    title: "Clientes e Vendedores",
+    description: "Rankings, recorrência e pendências por cliente e vendedor.",
+    emptyTitle: "Clientes sem base de pedidos",
+    emptyBody: "Carregue a planilha de pedidos para analisar clientes e vendedores.",
+    icon: "CL",
+    render: renderClientesPage
+  },
+  producao: {
+    eyebrow: "Operação e prazos",
+    title: "Produção e Prazo",
+    description: "Funil operacional, aging e prazos extraídos dos pedidos.",
+    emptyTitle: "Produção sem base de pedidos",
+    emptyBody: "Carregue a planilha de pedidos para acompanhar prazos e status operacionais.",
+    icon: "PR",
+    render: renderProducaoPage
+  },
   resultado: {
     eyebrow: "Visão integrada",
     title: "Resultado",
@@ -87,7 +105,8 @@ const routes = {
     description: "Alertas financeiros, comerciais e operacionais a partir das bases validadas.",
     emptyTitle: "Insights aguardando dados",
     emptyBody: "Alertas financeiros, comerciais e operacionais serão gerados depois da validação.",
-    icon: "IN"
+    icon: "IN",
+    render: renderInsightsPage
   },
   "base-dados": {
     eyebrow: "Dados normalizados",
@@ -105,7 +124,8 @@ const routes = {
     description: "Catálogo opcional de indicadores e metas gerenciais.",
     emptyTitle: "Metas sem catálogo importado",
     emptyBody: "Indicadores e metas são opcionais e aparecerão quando a planilha correspondente for carregada.",
-    icon: "MT"
+    icon: "MT",
+    render: renderMetasPage
   }
 };
 
@@ -137,8 +157,11 @@ let executiveChartInstances = [];
 let financeChartInstances = [];
 let pedidosChartInstances = [];
 let resultadoChartInstances = [];
+let clientesChartInstances = [];
+let producaoChartInstances = [];
 let executiveResizeTimer = null;
-const ANALYTICAL_ROUTES = ["executivo", "financeiro", "pedidos", "resultado", "insights"];
+const expandedInsightAlerts = new Set();
+const ANALYTICAL_ROUTES = ["executivo", "financeiro", "pedidos", "clientes", "producao", "resultado", "insights", "metas"];
 const tableSortState = {
   pedidos: { key: null, direction: null },
   contas: { key: null, direction: null },
@@ -199,6 +222,18 @@ function toggleTheme() {
   }
   if (getRouteFromHash() === "resultado" && canContinueToDashboards()) {
     mountResultadoDashboard();
+  }
+  if (getRouteFromHash() === "insights" && canContinueToDashboards()) {
+    mountInsightsDashboard();
+  }
+  if (getRouteFromHash() === "clientes" && hasPedidosData()) {
+    mountClientesDashboard();
+  }
+  if (getRouteFromHash() === "producao" && hasPedidosData()) {
+    mountProducaoDashboard();
+  }
+  if (getRouteFromHash() === "metas" && hasIndicadoresData()) {
+    mountMetasDashboard();
   }
 }
 
@@ -591,6 +626,18 @@ function renderResultadoFilters(pedidos, contas) {
   `;
 }
 
+function renderInsightsFilters(pedidos, contas) {
+  return renderResultadoFilters(pedidos, contas);
+}
+
+function renderClienteFilters(pedidos) {
+  return renderPedidoFilters(pedidos);
+}
+
+function renderProducaoFilters(pedidos) {
+  return renderPedidoFilters(pedidos);
+}
+
 function renderFilterPanelContent(route = getRouteFromHash()) {
   if (!filterPanel) {
     return;
@@ -613,8 +660,18 @@ function renderFilterPanelContent(route = getRouteFromHash()) {
     return;
   }
 
+  if (route === "clientes" || route === "producao") {
+    filterPanel.innerHTML = renderClienteFilters(pedidos);
+    return;
+  }
+
   if (route === "resultado") {
     filterPanel.innerHTML = renderResultadoFilters(pedidos, contas);
+    return;
+  }
+
+  if (route === "insights") {
+    filterPanel.innerHTML = renderInsightsFilters(pedidos, contas);
     return;
   }
 
@@ -803,6 +860,10 @@ function hasContasData() {
 
 function hasPedidosData() {
   return Boolean(appState.dataset && appState.dataset.pedidos?.length);
+}
+
+function hasIndicadoresData() {
+  return Boolean(appState.dataset && appState.dataset.indicadores?.length);
 }
 
 function renderMetricBlock(title, cardsHtml, options = {}) {
@@ -1648,6 +1709,554 @@ function mountResultadoDashboard() {
   }
 }
 
+const INSIGHTS_CATEGORIES = [
+  { id: "financeiro", title: "Financeiro" },
+  { id: "comercial", title: "Comercial" },
+  { id: "operacional", title: "Operacional" }
+];
+
+const INSIGHT_SEVERITY_BADGES = {
+  critico: { label: "Crítico", className: "badge-danger" },
+  atencao: { label: "Atenção", className: "badge-warning" },
+  informativo: { label: "Informativo", className: "badge-info" }
+};
+
+function renderInsightAlertCard(alert) {
+  const severity = INSIGHT_SEVERITY_BADGES[alert.severity] || INSIGHT_SEVERITY_BADGES.informativo;
+  const expanded = alert.severity === "critico" || expandedInsightAlerts.has(alert.id);
+  return `
+    <article class="insight-alert-card" data-insight-alert="${escapeHTML(alert.id)}">
+      <header class="insight-alert-header">
+        <div>
+          <h4 class="insight-alert-title">${escapeHTML(alert.title)}</h4>
+          <p class="insight-alert-criterion">${escapeHTML(alert.criterion)}</p>
+        </div>
+        <div class="insight-alert-meta">
+          <span class="badge ${severity.className}">${severity.label}</span>
+          <span class="badge badge-neutral">${alert.count}</span>
+          <button
+            class="button button-ghost insight-alert-toggle"
+            type="button"
+            data-insight-toggle="${escapeHTML(alert.id)}"
+            aria-expanded="${expanded ? "true" : "false"}"
+          >${expanded ? "Recolher" : "Expandir"}</button>
+        </div>
+      </header>
+      <div class="insight-alert-body" data-insight-body="${escapeHTML(alert.id)}" ${expanded ? "" : "hidden"}>
+        <div data-insight-table="${escapeHTML(alert.id)}"></div>
+      </div>
+    </article>
+  `;
+}
+
+function renderInsightsCategoryBlock(categoryId, title, alerts) {
+  if (!alerts.length) {
+    return `
+      <section class="insight-category-block" data-insight-category="${categoryId}">
+        <h2 class="metric-block-title">${escapeHTML(title)}</h2>
+        <p class="executive-exception-empty">Nenhum alerta ativo nesta categoria.</p>
+      </section>
+    `;
+  }
+  return `
+    <section class="insight-category-block" data-insight-category="${categoryId}">
+      <h2 class="metric-block-title">${escapeHTML(title)}</h2>
+      <div class="insight-alert-list">
+        ${alerts.map(renderInsightAlertCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderInsightsPage(route) {
+  if (!canContinueToDashboards()) {
+    return renderEmptyPage(route);
+  }
+
+  const kpiStrip = [
+    renderMetricCard("Total de alertas", { key: "insightsTotal" }),
+    renderMetricCard("Alertas críticos", { key: "insightsCriticos", valueClass: "metric-card-value--warning" }),
+    renderMetricCard("Alertas financeiros", { key: "insightsFinanceiros" }),
+    renderMetricCard("Comerciais + operacionais", { key: "insightsComOp" })
+  ].join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    <section class="metric-block">
+      <h2 class="metric-block-title">Resumo</h2>
+      <div class="metric-grid insights-kpi-strip">${kpiStrip}</div>
+    </section>
+    <div data-insights-positive hidden>
+      <section class="empty-state insight-positive-state" aria-labelledby="insights-ok-title">
+        <div class="empty-state-inner">
+          <span class="badge badge-success">Tudo certo</span>
+          <h2 id="insights-ok-title">Nenhum alerta ativo</h2>
+          <p>Não há problemas financeiros, comerciais ou operacionais no recorte atual.</p>
+        </div>
+      </section>
+    </div>
+    <div data-insights-content>
+      ${INSIGHTS_CATEGORIES.map((category) => `<div data-insight-block="${category.id}"></div>`).join("")}
+    </div>
+  `;
+}
+
+function mountInsightTable(alert) {
+  const container = document.querySelector(`[data-insight-table="${alert.id}"]`);
+  if (!container) {
+    return;
+  }
+  if (!alert.rows.length) {
+    container.innerHTML = `<p class="executive-exception-empty">Nenhum registro para exibir.</p>`;
+    return;
+  }
+  window.MoldeTables.renderVirtualTable(container, {
+    rows: alert.rows,
+    columns: alert.columns
+  });
+}
+
+function mountInsightsDashboard() {
+  if (getRouteFromHash() !== "insights" || !canContinueToDashboards() || !window.MoldeInsights || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const contas = window.MoldeFilters.applyFilters(appState.dataset.contas || [], "contas", filterState);
+  const payload = window.MoldeInsights.generateAlerts(pedidos, contas);
+  const summary = payload.summary;
+
+  const metricMap = {
+    insightsTotal: String(summary.total),
+    insightsCriticos: String(summary.criticos),
+    insightsFinanceiros: String(summary.financeiros),
+    insightsComOp: String(summary.comerciaisOperacionais)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+    }
+  });
+
+  const positive = document.querySelector("[data-insights-positive]");
+  const content = document.querySelector("[data-insights-content]");
+  const hasAlerts = summary.total > 0;
+  if (positive) {
+    positive.hidden = hasAlerts;
+  }
+  if (content) {
+    content.hidden = !hasAlerts;
+  }
+
+  INSIGHTS_CATEGORIES.forEach((category) => {
+    const block = document.querySelector(`[data-insight-block="${category.id}"]`);
+    if (!block) {
+      return;
+    }
+    const alerts = payload.categories[category.id] || [];
+    block.innerHTML = renderInsightsCategoryBlock(category.id, category.title, alerts);
+    alerts.forEach((alert) => mountInsightTable(alert));
+  });
+}
+
+function handleInsightToggle(event) {
+  const button = event.target.closest("[data-insight-toggle]");
+  if (!button) {
+    return;
+  }
+  const alertId = button.dataset.insightToggle;
+  const body = document.querySelector(`[data-insight-body="${alertId}"]`);
+  if (!body) {
+    return;
+  }
+  if (expandedInsightAlerts.has(alertId)) {
+    expandedInsightAlerts.delete(alertId);
+    body.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    button.textContent = "Expandir";
+  } else {
+    expandedInsightAlerts.add(alertId);
+    body.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    button.textContent = "Recolher";
+  }
+}
+
+const CLIENTES_KPI_BLOCKS = [
+  {
+    title: "Base de clientes",
+    cards: [
+      { label: "Clientes únicos", key: "clientesUnicos" },
+      { label: "Clientes recorrentes", key: "clientesRecorrentes" },
+      { label: "Clientes novos no mês", key: "clientesNovosMes" }
+    ]
+  },
+  {
+    title: "Destaques por cliente",
+    cards: [
+      { label: "Top cliente por receita", key: "topClienteReceitaNome", subtitleKey: "topClienteReceitaValor" },
+      { label: "Top cliente por pendência", key: "topClientePendenciaNome", subtitleKey: "topClientePendenciaValor" }
+    ]
+  },
+  {
+    title: "Destaques por vendedor",
+    cards: [
+      { label: "Maior receita", key: "topVendedorReceitaNome", subtitleKey: "topVendedorReceitaValor" },
+      { label: "Maior ticket médio", key: "topVendedorTicketNome", subtitleKey: "topVendedorTicketValor" },
+      { label: "Mais pedidos", key: "topVendedorPedidosNome", subtitleKey: "topVendedorPedidosValor" },
+      { label: "Maior pendência", key: "topVendedorPendenciaNome", subtitleKey: "topVendedorPendenciaValor" }
+    ]
+  }
+];
+
+const CLIENTES_CHART_PANELS = [
+  { id: "cl-revenue-vendor", title: "Receita por vendedor" },
+  { id: "cl-ticket-vendor", title: "Ticket médio por vendedor" },
+  { id: "cl-orders-vendor", title: "Pedidos por vendedor" },
+  { id: "cl-pending-vendor", title: "Pendência por vendedor" },
+  { id: "cl-top-clients-revenue", title: "Top clientes por receita" },
+  { id: "cl-top-clients-pending", title: "Top clientes por pendência" },
+  { id: "cl-new-recurrent", title: "Clientes novos × recorrentes" },
+  { id: "cl-vendor-status-heatmap", title: "Matriz vendedor × status", wide: true }
+];
+
+function renderClientesPage(route) {
+  if (!hasPedidosData()) {
+    return renderEmptyPage(route);
+  }
+
+  const kpiBlocks = CLIENTES_KPI_BLOCKS.map((block) => {
+    const cards = block.cards
+      .map((card) => renderMetricCard(card.label, { key: card.key, subtitleKey: card.subtitleKey, valueClass: card.subtitleKey ? "metric-card-value--name" : "" }))
+      .join("");
+    return renderMetricBlock(block.title, cards);
+  }).join("");
+
+  const chartPanels = CLIENTES_CHART_PANELS.map(
+    (panel) => `
+      <article class="chart-panel ${panel.wide ? "chart-panel--wide" : ""}">
+        <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+        <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+      </article>
+    `
+  ).join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${kpiBlocks}
+    <section class="clientes-charts-grid" aria-label="Gráficos de clientes e vendedores">
+      ${chartPanels}
+    </section>
+  `;
+}
+
+function disposeClientesCharts() {
+  if (window.MoldeCharts && clientesChartInstances.length) {
+    window.MoldeCharts.disposeClientesCharts(clientesChartInstances);
+  }
+  clientesChartInstances = [];
+}
+
+function mountClientesDashboard() {
+  if (getRouteFromHash() !== "clientes" || !hasPedidosData() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const metrics = window.MoldeMetrics;
+  const kpis = metrics.computeClientesKpis(pedidos);
+  const format = metrics.formatCurrency;
+
+  const metricMap = {
+    clientesUnicos: String(kpis.clientesUnicos),
+    clientesRecorrentes: String(kpis.clientesRecorrentes),
+    clientesNovosMes: String(kpis.clientesNovosMes),
+    topClienteReceitaNome: kpis.topClienteReceitaNome,
+    topClientePendenciaNome: kpis.topClientePendenciaNome,
+    topVendedorReceitaNome: kpis.topVendedorReceitaNome,
+    topVendedorTicketNome: kpis.topVendedorTicketNome,
+    topVendedorPedidosNome: kpis.topVendedorPedidosNome,
+    topVendedorPendenciaNome: kpis.topVendedorPendenciaNome
+  };
+  const subtitleMap = {
+    topClienteReceitaValor: format(kpis.topClienteReceitaValor),
+    topClientePendenciaValor: format(kpis.topClientePendenciaValor),
+    topVendedorReceitaValor: format(kpis.topVendedorReceitaValor),
+    topVendedorTicketValor: format(kpis.topVendedorTicketValor),
+    topVendedorPedidosValor: String(kpis.topVendedorPedidosValor),
+    topVendedorPendenciaValor: format(kpis.topVendedorPendenciaValor)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+      if (metricMap[key] && metricMap[key] !== "—") {
+        element.title = metricMap[key];
+      }
+    }
+  });
+  document.querySelectorAll("[data-metric-subtitle]").forEach((element) => {
+    const key = element.dataset.metricSubtitle;
+    if (subtitleMap[key] !== undefined) {
+      element.textContent = subtitleMap[key];
+    }
+  });
+
+  disposeClientesCharts();
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      revenueVendor: document.querySelector('[data-chart="cl-revenue-vendor"]'),
+      ticketVendor: document.querySelector('[data-chart="cl-ticket-vendor"]'),
+      ordersVendor: document.querySelector('[data-chart="cl-orders-vendor"]'),
+      pendingVendor: document.querySelector('[data-chart="cl-pending-vendor"]'),
+      topClientsRevenue: document.querySelector('[data-chart="cl-top-clients-revenue"]'),
+      topClientsPending: document.querySelector('[data-chart="cl-top-clients-pending"]'),
+      newRecurrent: document.querySelector('[data-chart="cl-new-recurrent"]'),
+      vendorStatusHeatmap: document.querySelector('[data-chart="cl-vendor-status-heatmap"]')
+    };
+    clientesChartInstances = window.MoldeCharts.renderClientesCharts(containers, pedidos, theme);
+  }
+}
+
+const PRODUCAO_KPI_BLOCKS = [
+  {
+    title: "Status operacional",
+    cards: [
+      { label: "Aguardando produzir", key: "aguardandoProduzir" },
+      { label: "Produzindo", key: "produzindo" },
+      { label: "Prontos para entrega", key: "prontosEntrega" },
+      { label: "Entregues", key: "entregues" },
+      { label: "Atrasados", key: "atrasados", warning: true }
+    ]
+  },
+  {
+    title: "Prazos",
+    cards: [
+      { label: "Tempo médio cadastro → entrega", key: "tempoMedioCadastroEntrega" },
+      { label: "Tempo médio previsto → entregue", key: "tempoMedioPrevistoEntregue" },
+      { label: "% entregues no prazo", key: "percentualNoPrazo" },
+      { label: "Sem data prevista", key: "semDataPrevista" },
+      { label: "Sem data entregue", key: "semDataEntregue" }
+    ]
+  }
+];
+
+const PRODUCAO_CHART_PANELS = [
+  { id: "pr-production-funnel", title: "Funil operacional" },
+  { id: "pr-late-by-month", title: "Pedidos atrasados por mês" },
+  { id: "pr-production-time", title: "Tempo médio de produção" },
+  { id: "pr-on-time-split", title: "Entregues no prazo × atrasados" },
+  { id: "pr-active-aging", title: "Aging dos pedidos ativos" },
+  { id: "pr-no-forecast-vendor", title: "Pedidos sem previsão por vendedor" }
+];
+
+function renderProducaoPage(route) {
+  if (!hasPedidosData()) {
+    return renderEmptyPage(route);
+  }
+
+  const kpiBlocks = PRODUCAO_KPI_BLOCKS.map((block) => {
+    const cards = block.cards
+      .map((card) => renderMetricCard(card.label, { key: card.key, warning: card.warning }))
+      .join("");
+    return renderMetricBlock(block.title, cards);
+  }).join("");
+
+  const chartPanels = PRODUCAO_CHART_PANELS.map(
+    (panel) => `
+      <article class="chart-panel">
+        <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+        <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+      </article>
+    `
+  ).join("");
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${kpiBlocks}
+    <section class="producao-charts-grid" aria-label="Gráficos de produção e prazo">
+      ${chartPanels}
+    </section>
+  `;
+}
+
+function disposeProducaoCharts() {
+  if (window.MoldeCharts && producaoChartInstances.length) {
+    window.MoldeCharts.disposeProducaoCharts(producaoChartInstances);
+  }
+  producaoChartInstances = [];
+}
+
+function mountProducaoDashboard() {
+  if (getRouteFromHash() !== "producao" || !hasPedidosData() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const metrics = window.MoldeMetrics;
+  const kpis = metrics.computeProducaoKpis(pedidos);
+  const percent = metrics.formatPercent;
+
+  const metricMap = {
+    aguardandoProduzir: String(kpis.aguardandoProduzir),
+    produzindo: String(kpis.produzindo),
+    prontosEntrega: String(kpis.prontosEntrega),
+    entregues: String(kpis.entregues),
+    atrasados: String(kpis.atrasados),
+    tempoMedioCadastroEntrega: Number.isFinite(kpis.tempoMedioCadastroEntrega)
+      ? `${kpis.tempoMedioCadastroEntrega.toFixed(1).replace(".", ",")} dias`
+      : "—",
+    tempoMedioPrevistoEntregue: Number.isFinite(kpis.tempoMedioPrevistoEntregue)
+      ? `${kpis.tempoMedioPrevistoEntregue.toFixed(1).replace(".", ",")} dias`
+      : "—",
+    percentualNoPrazo: percent(kpis.percentualNoPrazo),
+    semDataPrevista: String(kpis.semDataPrevista),
+    semDataEntregue: String(kpis.semDataEntregue)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+    }
+  });
+
+  disposeProducaoCharts();
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      productionFunnel: document.querySelector('[data-chart="pr-production-funnel"]'),
+      lateByMonth: document.querySelector('[data-chart="pr-late-by-month"]'),
+      productionTime: document.querySelector('[data-chart="pr-production-time"]'),
+      onTimeSplit: document.querySelector('[data-chart="pr-on-time-split"]'),
+      activeAging: document.querySelector('[data-chart="pr-active-aging"]'),
+      noForecastVendor: document.querySelector('[data-chart="pr-no-forecast-vendor"]')
+    };
+    producaoChartInstances = window.MoldeCharts.renderProducaoCharts(containers, pedidos, theme);
+  }
+}
+
+const METAS_STATUS_BADGES = {
+  calculavel: { label: "Calculável", className: "badge-success" },
+  manual: { label: "Manual", className: "badge-info" },
+  indisponivel: { label: "Indisponível", className: "badge-neutral" }
+};
+
+function formatMetasIndicatorValue(item) {
+  if (item.status === "indisponivel" || item.valorAtual === null || item.valorAtual === undefined) {
+    return "—";
+  }
+  const name = String(item.indicador || "").toLowerCase();
+  if (/pedidos|quantidade|clientes|atras/.test(name) && !/receita|despesa|ticket/.test(name)) {
+    return String(Math.round(item.valorAtual));
+  }
+  if (/prazo|percent|%/.test(name)) {
+    return window.MoldeMetrics.formatPercent(item.valorAtual);
+  }
+  if (/tempo|dias/.test(name)) {
+    return `${Number(item.valorAtual).toFixed(1).replace(".", ",")} dias`;
+  }
+  return window.MoldeMetrics.formatCurrency(item.valorAtual);
+}
+
+function renderMetasSectorBlock(sector) {
+  const rows = sector.items
+    .map((item) => {
+      const status = METAS_STATUS_BADGES[item.status] || METAS_STATUS_BADGES.indisponivel;
+      const valorAtual = formatMetasIndicatorValue(item);
+      const meta = Number.isFinite(item.meta) ? window.MoldeMetrics.formatCurrency(item.meta) : "—";
+      return `
+        <tr>
+          <td>${escapeHTML(item.indicador)}</td>
+          <td>${meta}</td>
+          <td>${valorAtual}</td>
+          <td>${escapeHTML(item.origem)}</td>
+          <td><span class="badge ${status.className}">${status.label}</span></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <article class="card metas-sector-card">
+      <h3 class="chart-panel-title">${escapeHTML(sector.setor)}</h3>
+      <div class="table-wrap">
+        <table class="data-table metas-sector-table">
+          <thead>
+            <tr>
+              <th scope="col">Indicador</th>
+              <th scope="col">Meta</th>
+              <th scope="col">Valor atual</th>
+              <th scope="col">Origem</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderMetasPage(route) {
+  if (!hasIndicadoresData()) {
+    return renderEmptyPage(route);
+  }
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-info">Catálogo importado</span>
+    </header>
+    <section class="metas-catalog-grid" data-metas-catalog aria-label="Catálogo de indicadores por setor"></section>
+  `;
+}
+
+function mountMetasDashboard() {
+  if (getRouteFromHash() !== "metas" || !hasIndicadoresData() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const container = document.querySelector("[data-metas-catalog]");
+  if (!container) {
+    return;
+  }
+
+  const pedidos = appState.dataset.pedidos || [];
+  const contas = appState.dataset.contas || [];
+  const sectors = window.MoldeMetrics.classifyIndicadores(appState.dataset.indicadores || [], pedidos, contas);
+  container.innerHTML = sectors.map(renderMetasSectorBlock).join("");
+}
+
 function renderFindingItem(finding, severityLabel, severityClass) {
   return `
     <li class="validation-finding ${severityClass}">
@@ -2107,6 +2716,8 @@ function focusFirstPendingUploadCard() {
 }
 
 function attachGlobalInteractions() {
+  pageView?.addEventListener("click", handleInsightToggle);
+
   filterToggle?.addEventListener("click", () => {
     const open = shell.dataset.filterOpen === "true";
     shell.dataset.filterOpen = String(!open);
@@ -2248,6 +2859,18 @@ function onFilterStateChanged() {
   if (getRouteFromHash() === "resultado" && canContinueToDashboards()) {
     mountResultadoDashboard();
   }
+  if (getRouteFromHash() === "insights" && canContinueToDashboards()) {
+    mountInsightsDashboard();
+  }
+  if (getRouteFromHash() === "clientes" && hasPedidosData()) {
+    mountClientesDashboard();
+  }
+  if (getRouteFromHash() === "producao" && hasPedidosData()) {
+    mountProducaoDashboard();
+  }
+  if (getRouteFromHash() === "metas" && hasIndicadoresData()) {
+    mountMetasDashboard();
+  }
 }
 
 function attachRouteInteractions() {
@@ -2358,6 +2981,8 @@ function renderCurrentRoute(options = {}) {
   disposeFinanceCharts();
   disposePedidosCharts();
   disposeResultadoCharts();
+  disposeClientesCharts();
+  disposeProducaoCharts();
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
@@ -2400,6 +3025,22 @@ function renderCurrentRoute(options = {}) {
 
   if (routeName === "resultado" && canContinueToDashboards()) {
     mountResultadoDashboard();
+  }
+
+  if (routeName === "insights" && canContinueToDashboards()) {
+    mountInsightsDashboard();
+  }
+
+  if (routeName === "clientes" && hasPedidosData()) {
+    mountClientesDashboard();
+  }
+
+  if (routeName === "producao" && hasPedidosData()) {
+    mountProducaoDashboard();
+  }
+
+  if (routeName === "metas" && hasIndicadoresData()) {
+    mountMetasDashboard();
   }
 }
 

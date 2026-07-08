@@ -683,6 +683,164 @@
     disposeInstances(instances);
   }
 
+  function renderClientesCharts(containers, pedidos, theme) {
+    const metrics = window.MoldeMetrics;
+    if (!metrics || !containers) {
+      return [];
+    }
+
+    const colors = getChartColors();
+    const instances = [];
+    const push = (element, option) => {
+      if (element) {
+        instances.push(initChart(element, option, theme));
+      }
+    };
+
+    const rankings = metrics.aggregateVendorRankings(pedidos);
+    push(containers.revenueVendor, horizontalBarOption(colors, rankings.revenue));
+    push(containers.ticketVendor, horizontalBarOption(colors, rankings.ticket));
+    push(
+      containers.ordersVendor,
+      {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: colors,
+        grid: { left: 120, right: 16, top: 16, bottom: 32 },
+        tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+        xAxis: { type: "value" },
+        yAxis: { type: "category", data: rankings.orders.map((item) => item.label).reverse() },
+        series: [{ type: "bar", data: rankings.orders.map((item) => item.value).reverse() }]
+      }
+    );
+    push(containers.pendingVendor, horizontalBarOption(colors, rankings.pending));
+    push(containers.topClientsRevenue, horizontalBarOption(colors, metrics.topClientsByRevenue(pedidos, 12)));
+    push(containers.topClientsPending, horizontalBarOption(colors, metrics.topClientsByPending(pedidos, 12)));
+
+    const recurrence = metrics.aggregateClientRecurrence(pedidos);
+    push(containers.newRecurrent, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: colors,
+      grid: { left: 48, right: 16, top: 32, bottom: 32 },
+      tooltip: { trigger: "axis" },
+      legend: { data: ["Novos", "Recorrentes"] },
+      xAxis: { type: "category", data: recurrence.map((item) => formatMonthLabel(item.month)) },
+      yAxis: { type: "value", minInterval: 1 },
+      series: [
+        { name: "Novos", type: "bar", stack: "clientes", data: recurrence.map((item) => item.novos) },
+        { name: "Recorrentes", type: "bar", stack: "clientes", data: recurrence.map((item) => item.recorrentes) }
+      ]
+    });
+
+    const matrix = metrics.aggregateVendorStatusMatrix(pedidos);
+    push(containers.vendorStatusHeatmap, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      tooltip: {
+        position: "top",
+        formatter: (params) => `${matrix.vendors[params.value[1]]}<br/>${matrix.groups[params.value[0]]}: ${params.value[2]}`
+      },
+      grid: { left: 100, right: 24, top: 24, bottom: 80 },
+      xAxis: { type: "category", data: matrix.groups, splitArea: { show: true }, axisLabel: { interval: 0, rotate: 30 } },
+      yAxis: { type: "category", data: matrix.vendors, splitArea: { show: true } },
+      visualMap: {
+        min: 0,
+        max: Math.max(1, ...matrix.data.map((item) => item[2])),
+        calculable: false,
+        orient: "horizontal",
+        left: "center",
+        bottom: 0,
+        inRange: { color: ["#eef2ff", colors[0]] }
+      },
+      series: [
+        {
+          type: "heatmap",
+          data: matrix.data,
+          label: { show: matrix.data.length <= 60 }
+        }
+      ]
+    });
+
+    return instances.filter(Boolean);
+  }
+
+  function disposeClientesCharts(instances) {
+    disposeInstances(instances);
+  }
+
+  function renderProducaoCharts(containers, pedidos, theme) {
+    const metrics = window.MoldeMetrics;
+    if (!metrics || !containers) {
+      return [];
+    }
+
+    const colors = getChartColors();
+    const warningColor = getWarningColor();
+    const instances = [];
+    const push = (element, option) => {
+      if (element) {
+        instances.push(initChart(element, option, theme));
+      }
+    };
+
+    const funnel = metrics.aggregateProductionFunnel(pedidos);
+    push(containers.productionFunnel, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      tooltip: { trigger: "item", formatter: (params) => `${params.name}<br/>${params.value} pedidos` },
+      series: [
+        {
+          type: "funnel",
+          left: "10%",
+          width: "80%",
+          sort: "descending",
+          label: { show: true, position: "inside" },
+          data: funnel.map((item) => ({ name: item.label, value: item.value }))
+        }
+      ]
+    });
+
+    const lateByMonth = metrics.aggregateLateOrdersByMonth(pedidos);
+    push(containers.lateByMonth, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: [warningColor],
+      grid: { left: 48, right: 16, top: 32, bottom: 32 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+      xAxis: { type: "category", data: lateByMonth.map((item) => formatMonthLabel(item.month)) },
+      yAxis: { type: "value", minInterval: 1 },
+      series: [{ name: "Atrasados", type: "bar", data: lateByMonth.map((item) => item.count) }]
+    });
+
+    const production = metrics.productionTimeByMonth(pedidos);
+    push(containers.productionTime, lineOption(colors, production.map((item) => formatMonthLabel(item.month)), "Dias", production.map((item) => item.media)));
+
+    const onTime = metrics.onTimeDeliverySplit(pedidos);
+    push(containers.onTimeSplit, donutOption(colors, onTime.length ? onTime : [{ label: "Sem dados", value: 1 }]));
+
+    const aging = metrics.aggregateActiveOrderAging(pedidos);
+    push(containers.activeAging, {
+      aria: { enabled: true },
+      animationDuration: 300,
+      color: [colors[2]],
+      grid: { left: 48, right: 16, top: 16, bottom: 56 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} pedidos` },
+      xAxis: { type: "category", data: aging.map((item) => item.label) },
+      yAxis: { type: "value", minInterval: 1 },
+      series: [{ type: "bar", data: aging.map((item) => item.value) }]
+    });
+
+    const noForecast = metrics.aggregateOrdersWithoutForecastByVendor(pedidos);
+    push(containers.noForecastVendor, horizontalBarOption(colors, noForecast));
+
+    return instances.filter(Boolean);
+  }
+
+  function disposeProducaoCharts(instances) {
+    disposeInstances(instances);
+  }
+
   window.MoldeCharts = {
     getChartColors,
     renderExecutiveCharts,
@@ -692,6 +850,10 @@
     renderPedidosCharts,
     disposePedidosCharts,
     renderResultadoCharts,
-    disposeResultadoCharts
+    disposeResultadoCharts,
+    renderClientesCharts,
+    disposeClientesCharts,
+    renderProducaoCharts,
+    disposeProducaoCharts
   };
 })();

@@ -1021,6 +1021,606 @@
     return currencyFormatter.format(value);
   }
 
+  function getReferenceMonths(today = new Date()) {
+    const current = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const previousDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const previous = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
+    return { current, previous };
+  }
+
+  function compareMonthMetric(current, previous, options = {}) {
+    const higherIsBad = Boolean(options.higherIsBad);
+    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+      return null;
+    }
+    const changePct = ((current - previous) / Math.abs(previous)) * 100;
+    const triggered = higherIsBad ? changePct >= (options.thresholdPct || 20) : changePct <= -(options.thresholdPct || 20);
+    if (!triggered) {
+      return null;
+    }
+    return {
+      current,
+      previous,
+      changePct,
+      variacao: `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1).replace(".", ",")}%`
+    };
+  }
+
+  function sumContasByMonth(contas, month) {
+    return sumField(
+      (contas || []).filter((row) => monthKeyFromConta(row) === month),
+      (row) => row.valor
+    );
+  }
+
+  function sumContasByMonthGroup(contas, month, keyGetter) {
+    const totals = new Map();
+    (contas || [])
+      .filter((row) => monthKeyFromConta(row) === month)
+      .forEach((row) => {
+        const label = keyGetter(row) || "Sem identificação";
+        totals.set(label, (totals.get(label) || 0) + (row.valor || 0));
+      });
+    return totals;
+  }
+
+  function detectSupplierSpike(contas, months, thresholdPct = 20) {
+    const currentTotals = sumContasByMonthGroup(contas, months.current, (row) => row.fornecedor);
+    const previousTotals = sumContasByMonthGroup(contas, months.previous, (row) => row.fornecedor);
+    let best = null;
+    currentTotals.forEach((current, nome) => {
+      const previous = previousTotals.get(nome) || 0;
+      const comparison = compareMonthMetric(current, previous, { higherIsBad: true, thresholdPct });
+      if (comparison && (!best || comparison.changePct > best.changePct)) {
+        best = {
+          nome,
+          atual: current,
+          anterior: previous,
+          variacao: comparison.variacao,
+          changePct: comparison.changePct
+        };
+      }
+    });
+    return best;
+  }
+
+  function detectFixedExpenseAboveAverage(contas, months) {
+    const fixedByMonth = new Map();
+    (contas || []).filter(isDespesaFixa).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      fixedByMonth.set(month, (fixedByMonth.get(month) || 0) + (row.valor || 0));
+    });
+    const current = fixedByMonth.get(months.current) || 0;
+    const history = Array.from(fixedByMonth.entries())
+      .filter(([month]) => month !== months.current)
+      .map(([, value]) => value);
+    if (!history.length || current <= 0) {
+      return null;
+    }
+    const average = history.reduce((total, value) => total + value, 0) / history.length;
+    if (current <= average * 1.05) {
+      return null;
+    }
+    const changePct = ((current - average) / average) * 100;
+    return {
+      nome: "Despesas fixas",
+      atual: current,
+      anterior: average,
+      variacao: `+${changePct.toFixed(1).replace(".", ",")}% vs média`
+    };
+  }
+
+  function detectCategoryGrowth(contas, months, thresholdPct = 20) {
+    const currentTotals = sumContasByMonthGroup(contas, months.current, (row) => row.categoria || "Sem categoria");
+    const previousTotals = sumContasByMonthGroup(contas, months.previous, (row) => row.categoria || "Sem categoria");
+    let best = null;
+    currentTotals.forEach((current, nome) => {
+      const previous = previousTotals.get(nome) || 0;
+      const comparison = compareMonthMetric(current, previous, { higherIsBad: true, thresholdPct });
+      if (comparison && (!best || comparison.changePct > best.changePct)) {
+        best = {
+          nome,
+          atual: current,
+          anterior: previous,
+          variacao: comparison.variacao,
+          changePct: comparison.changePct
+        };
+      }
+    });
+    return best;
+  }
+
+  function detectFutureDueConcentration(contas, thresholdPct = 40) {
+    const futureRows = (contas || []).filter((row) => row.status_pagamento === "Futuro");
+    if (!futureRows.length) {
+      return [];
+    }
+    const total = sumField(futureRows, (row) => row.valor);
+    if (total <= 0) {
+      return [];
+    }
+    const byMonth = new Map();
+    futureRows.forEach((row) => {
+      const month = row.mes_vencimento || "Sem mês";
+      byMonth.set(month, (byMonth.get(month) || 0) + (row.valor || 0));
+    });
+    return Array.from(byMonth.entries())
+      .map(([mes, valor]) => ({
+        mes,
+        valor,
+        percentual: `${((valor / total) * 100).toFixed(1).replace(".", ",")}%`
+      }))
+      .filter((item) => (item.valor / total) * 100 >= thresholdPct)
+      .sort((a, b) => b.valor - a.valor);
+  }
+
+  function getClientsHighPending(pedidos, minValue = 3000) {
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !isCancelado(row))
+      .forEach((row) => {
+        const nome = row.cliente || "Sem cliente";
+        totals.set(nome, (totals.get(nome) || 0) + (row.valor_pendente || 0));
+      });
+    return Array.from(totals.entries())
+      .filter(([, valor]) => valor >= minValue)
+      .map(([nome, valor]) => ({ nome, valor, pedidos: null }))
+      .sort((a, b) => b.valor - a.valor);
+  }
+
+  function getVendorsManyPending(pedidos, minOrders = 5) {
+    const counts = new Map();
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !isCancelado(row) && (row.valor_pendente || 0) > 0.01)
+      .forEach((row) => {
+        const nome = row.vendedor || "Sem vendedor";
+        counts.set(nome, (counts.get(nome) || 0) + 1);
+        totals.set(nome, (totals.get(nome) || 0) + (row.valor_pendente || 0));
+      });
+    return Array.from(counts.entries())
+      .filter(([, pedidosCount]) => pedidosCount >= minOrders)
+      .map(([nome, pedidosCount]) => ({ nome, valor: totals.get(nome) || 0, pedidos: pedidosCount }))
+      .sort((a, b) => b.pedidos - a.pedidos);
+  }
+
+  function detectTicketDrop(pedidos, months, thresholdPct = 20) {
+    const ticketForMonth = (month) => {
+      const rows = getActivePedidoRows(pedidos).filter((row) => monthKeyFromPedido(row) === month);
+      if (!rows.length) {
+        return null;
+      }
+      return sumField(rows, (row) => row.valor_final) / rows.length;
+    };
+    const current = ticketForMonth(months.current);
+    const previous = ticketForMonth(months.previous);
+    const comparison = compareMonthMetric(current, previous, { higherIsBad: false, thresholdPct });
+    if (!comparison) {
+      return null;
+    }
+    return {
+      nome: "Ticket médio",
+      atual: current,
+      anterior: previous,
+      variacao: comparison.variacao
+    };
+  }
+
+  function detectDeliveryTimeIncrease(pedidos, months, thresholdPct = 20) {
+    const avgForMonth = (month) => {
+      const rows = getDeliveredRows(pedidos).filter(
+        (row) => (row.mes_entrega || monthKeyFromPedido(row)) === month && Number.isFinite(row.dias_producao)
+      );
+      if (!rows.length) {
+        return null;
+      }
+      return rows.reduce((total, row) => total + row.dias_producao, 0) / rows.length;
+    };
+    const current = avgForMonth(months.current);
+    const previous = avgForMonth(months.previous);
+    const comparison = compareMonthMetric(current, previous, { higherIsBad: true, thresholdPct });
+    if (!comparison) {
+      return null;
+    }
+    return {
+      nome: "Tempo médio de entrega",
+      atual: `${current.toFixed(1).replace(".", ",")}`,
+      anterior: `${previous.toFixed(1).replace(".", ",")}`,
+      variacao: comparison.variacao
+    };
+  }
+
+  function computeInsightsSummary(categories) {
+    const all = [...(categories.financeiro || []), ...(categories.comercial || []), ...(categories.operacional || [])];
+    const criticos = all.filter((alert) => alert.severity === "critico").reduce((total, alert) => total + alert.count, 0);
+    const financeiros = (categories.financeiro || []).reduce((total, alert) => total + alert.count, 0);
+    const comerciaisOperacionais =
+      (categories.comercial || []).reduce((total, alert) => total + alert.count, 0) +
+      (categories.operacional || []).reduce((total, alert) => total + alert.count, 0);
+    return {
+      total: all.reduce((total, alert) => total + alert.count, 0),
+      criticos,
+      financeiros,
+      comerciaisOperacionais
+    };
+  }
+
+  function normalizeSituacaoKey(value) {
+    return String(value ?? "").trim().toLowerCase();
+  }
+
+  function countBySituacaoOriginal(pedidos, label) {
+    return (pedidos || []).filter((row) => normalizeSituacaoKey(row.situacao_original) === normalizeSituacaoKey(label)).length;
+  }
+
+  function computeClientesKpis(pedidos) {
+    const rows = pedidos || [];
+    const activeRows = getActivePedidoRows(rows);
+    const clients = new Set();
+    const clientOrders = new Map();
+
+    rows.forEach((row) => {
+      const client = row.cliente || "Sem cliente";
+      clients.add(client);
+      const bucket = clientOrders.get(client) || { count: 0, revenue: 0, pending: 0, firstMonth: row.mes_cadastro };
+      bucket.count += 1;
+      if (row.mes_cadastro && (!bucket.firstMonth || row.mes_cadastro < bucket.firstMonth)) {
+        bucket.firstMonth = row.mes_cadastro;
+      }
+      if (isReceitaAtiva(row)) {
+        bucket.revenue += row.valor_final || 0;
+      }
+      if (!isCancelado(row)) {
+        bucket.pending += row.valor_pendente || 0;
+      }
+      clientOrders.set(client, bucket);
+    });
+
+    const recorrentes = Array.from(clientOrders.values()).filter((item) => item.count > 1).length;
+    const months = sortMonths(
+      new Set(activeRows.map((row) => row.mes_cadastro).filter(Boolean))
+    );
+    const currentMonth = months.length ? months[months.length - 1] : null;
+    const novosMes = currentMonth
+      ? Array.from(clientOrders.entries()).filter(([, data]) => data.firstMonth === currentMonth && data.count === 1).length
+      : 0;
+
+    const topClientRevenue = topClientsByRevenue(rows, 1)[0] || { label: "—", value: 0 };
+    const topClientPending = topClientsByPending(rows, 1)[0] || { label: "—", value: 0 };
+    const vendorRevenue = topVendorsByRevenue(rows, 1)[0] || { label: "—", value: 0 };
+    const vendorTicket = ticketByVendor(rows, 1)[0] || { label: "—", value: 0 };
+    const vendorOrders = ordersCountByVendor(rows, 1)[0] || { label: "—", value: 0 };
+    const vendorPending = pendingByVendor(rows, 1)[0] || { label: "—", value: 0 };
+
+    return {
+      clientesUnicos: clients.size,
+      clientesRecorrentes: recorrentes,
+      clientesNovosMes: novosMes,
+      topClienteReceitaNome: topClientRevenue.label,
+      topClienteReceitaValor: topClientRevenue.value,
+      topClientePendenciaNome: topClientPending.label,
+      topClientePendenciaValor: topClientPending.value,
+      topVendedorReceitaNome: vendorRevenue.label,
+      topVendedorReceitaValor: vendorRevenue.value,
+      topVendedorTicketNome: vendorTicket.label,
+      topVendedorTicketValor: vendorTicket.value,
+      topVendedorPedidosNome: vendorOrders.label,
+      topVendedorPedidosValor: vendorOrders.value,
+      topVendedorPendenciaNome: vendorPending.label,
+      topVendedorPendenciaValor: vendorPending.value
+    };
+  }
+
+  function topClientsByPending(pedidos, limit = 12) {
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !isCancelado(row))
+      .forEach((row) => {
+        const label = row.cliente || "Sem cliente";
+        totals.set(label, (totals.get(label) || 0) + (row.valor_pendente || 0));
+      });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  function ticketByVendor(pedidos, limit = 12) {
+    const sumMap = new Map();
+    const countMap = new Map();
+    getActivePedidoRows(pedidos).forEach((row) => {
+      const label = row.vendedor || "Sem vendedor";
+      sumMap.set(label, (sumMap.get(label) || 0) + (row.valor_final || 0));
+      countMap.set(label, (countMap.get(label) || 0) + 1);
+    });
+    return Array.from(sumMap.entries())
+      .map(([label, sum]) => ({ label, value: (countMap.get(label) || 0) > 0 ? sum / countMap.get(label) : 0 }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  function pendingByVendor(pedidos, limit = 12) {
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !isCancelado(row))
+      .forEach((row) => {
+        const label = row.vendedor || "Sem vendedor";
+        totals.set(label, (totals.get(label) || 0) + (row.valor_pendente || 0));
+      });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  function aggregateClientRecurrence(pedidos) {
+    const months = new Set();
+    (pedidos || []).forEach((row) => {
+      if (row.mes_cadastro) {
+        months.add(row.mes_cadastro);
+      }
+    });
+
+    const firstMonthByClient = new Map();
+    (pedidos || []).forEach((row) => {
+      const client = row.cliente || "Sem cliente";
+      const month = row.mes_cadastro;
+      if (!month) {
+        return;
+      }
+      const current = firstMonthByClient.get(client);
+      if (!current || month < current) {
+        firstMonthByClient.set(client, month);
+      }
+    });
+
+    return sortMonths(months).map((month) => {
+      let novos = 0;
+      let recorrentes = 0;
+      (pedidos || []).forEach((row) => {
+        if (row.mes_cadastro !== month) {
+          return;
+        }
+        const client = row.cliente || "Sem cliente";
+        if (firstMonthByClient.get(client) === month) {
+          novos += 1;
+        } else {
+          recorrentes += 1;
+        }
+      });
+      return { month, novos, recorrentes };
+    });
+  }
+
+  function aggregateVendorRankings(pedidos) {
+    return {
+      revenue: topVendorsByRevenue(pedidos, 12),
+      ticket: ticketByVendor(pedidos, 12),
+      orders: ordersCountByVendor(pedidos, 12),
+      pending: pendingByVendor(pedidos, 12)
+    };
+  }
+
+  function aggregateVendorStatusMatrix(pedidos) {
+    const vendors = new Set();
+    const groups = new Set();
+    const matrix = new Map();
+
+    (pedidos || []).forEach((row) => {
+      const vendor = row.vendedor || "Sem vendedor";
+      const grupo = row.situacao_grupo || "Sem status";
+      vendors.add(vendor);
+      groups.add(grupo);
+      const key = `${vendor}::${grupo}`;
+      matrix.set(key, (matrix.get(key) || 0) + 1);
+    });
+
+    const vendorList = Array.from(vendors).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const groupList = Array.from(groups).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const data = [];
+    vendorList.forEach((vendor, yIndex) => {
+      groupList.forEach((grupo, xIndex) => {
+        const value = matrix.get(`${vendor}::${grupo}`) || 0;
+        if (value > 0) {
+          data.push([xIndex, yIndex, value]);
+        }
+      });
+    });
+
+    return { vendors: vendorList, groups: groupList, data };
+  }
+
+  function computeProducaoKpis(pedidos) {
+    const rows = pedidos || [];
+    const delivered = getDeliveredRows(rows);
+    const activeLate = rows.filter((row) => row.entregue_no_prazo === false);
+    const productionDays = delivered.map((row) => row.dias_producao).filter((value) => Number.isFinite(value));
+    const leadDays = delivered
+      .filter((row) => row.data_prevista && row.data_entregue)
+      .map((row) => row.dias_atraso)
+      .filter((value) => Number.isFinite(value));
+    const onTimeEligible = delivered.filter((row) => row.entregue_no_prazo !== null);
+    const onTimeCount = onTimeEligible.filter((row) => row.entregue_no_prazo === true).length;
+
+    return {
+      aguardandoProduzir: countBySituacaoOriginal(rows, "Aguardando Produzir"),
+      produzindo: countBySituacaoOriginal(rows, "Produzindo"),
+      prontosEntrega: countBySituacaoOriginal(rows, "Pronto para Entrega"),
+      entregues: delivered.length,
+      atrasados: activeLate.length,
+      tempoMedioCadastroEntrega: productionDays.length
+        ? productionDays.reduce((total, value) => total + value, 0) / productionDays.length
+        : null,
+      tempoMedioPrevistoEntregue: leadDays.length
+        ? leadDays.reduce((total, value) => total + value, 0) / leadDays.length
+        : null,
+      percentualNoPrazo: onTimeEligible.length ? (onTimeCount / onTimeEligible.length) * 100 : null,
+      semDataPrevista: rows.filter((row) => !row.data_prevista && !isCancelado(row)).length,
+      semDataEntregue: rows.filter((row) => !row.data_entregue && row.situacao_grupo === ENTREGUE_GRUPO).length
+    };
+  }
+
+  function aggregateProductionFunnel(pedidos) {
+    const labels = ["Aguardando Produzir", "Produzindo", "Pronto para Entrega", "Entregue"];
+    return labels.map((label) => ({
+      label,
+      value:
+        label === "Entregue"
+          ? getDeliveredRows(pedidos).length
+          : countBySituacaoOriginal(pedidos, label)
+    }));
+  }
+
+  function aggregateLateOrdersByMonth(pedidos) {
+    const months = new Set();
+    const countMap = new Map();
+    (pedidos || [])
+      .filter((row) => row.entregue_no_prazo === false)
+      .forEach((row) => {
+        const month = row.mes_entrega || monthKeyFromPedido(row);
+        if (!month) {
+          return;
+        }
+        months.add(month);
+        countMap.set(month, (countMap.get(month) || 0) + 1);
+      });
+    return sortMonths(months).map((month) => ({ month, count: countMap.get(month) || 0 }));
+  }
+
+  function aggregateActiveOrderAging(pedidos, today = new Date()) {
+    const bands = [
+      { label: "0–3 dias", min: 0, max: 3, count: 0 },
+      { label: "4–7 dias", min: 4, max: 7, count: 0 },
+      { label: "8–15 dias", min: 8, max: 15, count: 0 },
+      { label: "16–30 dias", min: 16, max: 30, count: 0 },
+      { label: ">30 dias", min: 31, max: Infinity, count: 0 }
+    ];
+    (pedidos || [])
+      .filter((row) => row.situacao_grupo === ATIVO_GRUPO && row.data_cadastro)
+      .forEach((row) => {
+        const dias = Math.max(0, Math.round((today.getTime() - new Date(row.data_cadastro).getTime()) / 86400000));
+        const band = bands.find((item) => dias >= item.min && dias <= item.max);
+        if (band) {
+          band.count += 1;
+        }
+      });
+    return bands.map(({ label, count }) => ({ label, value: count }));
+  }
+
+  function aggregateOrdersWithoutForecastByVendor(pedidos) {
+    const totals = new Map();
+    (pedidos || [])
+      .filter((row) => !row.data_prevista && !isCancelado(row))
+      .forEach((row) => {
+        const label = row.vendedor || "Sem vendedor";
+        totals.set(label, (totals.get(label) || 0) + 1);
+      });
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+  }
+
+  function computeIndicatorValue(indicador, pedidos, contas) {
+    const text = String(indicador?.indicador || "").toLowerCase();
+    if (/receita/.test(text)) {
+      return { valor: sumField(getActivePedidoRows(pedidos), (row) => row.valor_final), origem: "Calculado por pedidos" };
+    }
+    if (/ticket/.test(text)) {
+      const active = getActivePedidoRows(pedidos);
+      const ticket = active.length ? sumField(active, (row) => row.valor_final) / active.length : null;
+      return { valor: ticket, origem: "Calculado por pedidos" };
+    }
+    if (/pedidos entregues/.test(text)) {
+      return { valor: getDeliveredRows(pedidos).length, origem: "Calculado por pedidos" };
+    }
+    if (/despesa|contas a pagar|contas vencidas|vencid/.test(text)) {
+      if (/vencid/.test(text)) {
+        return {
+          valor: (contas || []).filter((row) => row.status_pagamento === "Vencido").length,
+          origem: "Calculado por contas"
+        };
+      }
+      return { valor: sumField(contas || [], (row) => row.valor), origem: "Calculado por contas" };
+    }
+    if (/produção|producao|prazo|atras/.test(text)) {
+      const kpis = computeProducaoKpis(pedidos);
+      if (/atras/.test(text)) {
+        return { valor: kpis.atrasados, origem: "Calculado por pedidos" };
+      }
+      if (/prazo/.test(text)) {
+        return { valor: kpis.percentualNoPrazo, origem: "Calculado por pedidos" };
+      }
+      return { valor: kpis.tempoMedioCadastroEntrega, origem: "Calculado por pedidos" };
+    }
+    return null;
+  }
+
+  function classifyIndicadores(indicadores, pedidos, contas) {
+    const catalog = window.MoldeNormalizers?.INDICATOR_CATALOG || [];
+    const rows = indicadores || [];
+    const sectors = new Map();
+
+    rows.forEach((row) => {
+      const setor = row.setor || "Sem setor";
+      const text = String(row.indicador || "");
+      const catalogHit = catalog.find((item) => item.match.test(text));
+      let status = "indisponivel";
+      let valorAtual = null;
+      let origem = row.origem || "Não disponível";
+
+      if (catalogHit?.calculavel) {
+        const computed = computeIndicatorValue(row, pedidos, contas);
+        if (computed && Number.isFinite(computed.valor)) {
+          status = "calculavel";
+          valorAtual = computed.valor;
+          origem = computed.origem;
+        } else if (computed && typeof computed.valor === "number") {
+          status = "calculavel";
+          valorAtual = computed.valor;
+          origem = computed.origem;
+        } else {
+          status = "indisponivel";
+        }
+      } else if (catalogHit && !catalogHit.calculavel) {
+        status = "manual";
+        valorAtual = row.valor;
+        origem = "Manual";
+      } else if (row.calculavel) {
+        const computed = computeIndicatorValue(row, pedidos, contas);
+        if (computed) {
+          status = "calculavel";
+          valorAtual = computed.valor;
+          origem = computed.origem;
+        }
+      } else if (row.valor !== null && row.valor !== undefined) {
+        status = "manual";
+        valorAtual = row.valor;
+        origem = "Manual";
+      }
+
+      const entry = {
+        indicador: row.indicador,
+        meta: row.meta,
+        valorAtual,
+        origem,
+        status,
+        mes: row.mes
+      };
+      if (!sectors.has(setor)) {
+        sectors.set(setor, []);
+      }
+      sectors.get(setor).push(entry);
+    });
+
+    return Array.from(sectors.entries())
+      .map(([setor, items]) => ({ setor, items }))
+      .sort((a, b) => a.setor.localeCompare(b.setor, "pt-BR"));
+  }
+
   window.MoldeMetrics = {
     RECEITA_ATIVA_GRUPOS,
     PIPELINE_GRUPO,
@@ -1081,6 +1681,30 @@
     formatRatio,
     formatCount,
     formatPercent,
-    formatCurrency
+    formatCurrency,
+    getReferenceMonths,
+    compareMonthMetric,
+    detectSupplierSpike,
+    detectFixedExpenseAboveAverage,
+    detectCategoryGrowth,
+    detectFutureDueConcentration,
+    getClientsHighPending,
+    getVendorsManyPending,
+    detectTicketDrop,
+    detectDeliveryTimeIncrease,
+    computeInsightsSummary,
+    computeClientesKpis,
+    topClientsByPending,
+    ticketByVendor,
+    pendingByVendor,
+    aggregateClientRecurrence,
+    aggregateVendorRankings,
+    aggregateVendorStatusMatrix,
+    computeProducaoKpis,
+    aggregateProductionFunnel,
+    aggregateLateOrdersByMonth,
+    aggregateActiveOrderAging,
+    aggregateOrdersWithoutForecastByVendor,
+    classifyIndicadores
   };
 })();

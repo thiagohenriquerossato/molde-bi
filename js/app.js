@@ -78,7 +78,8 @@ const routes = {
     description: "Comparação operacional entre entradas e saídas após validação.",
     emptyTitle: "Resultado integrado indisponível",
     emptyBody: "A comparação entre receita e despesas depende das bases de pedidos e contas.",
-    icon: "RS"
+    icon: "RS",
+    render: renderResultadoPage
   },
   insights: {
     eyebrow: "Alertas",
@@ -135,6 +136,7 @@ let baseDadosTab = "pedidos";
 let executiveChartInstances = [];
 let financeChartInstances = [];
 let pedidosChartInstances = [];
+let resultadoChartInstances = [];
 let executiveResizeTimer = null;
 const ANALYTICAL_ROUTES = ["executivo", "financeiro", "pedidos", "resultado", "insights"];
 const tableSortState = {
@@ -194,6 +196,9 @@ function toggleTheme() {
   }
   if (getRouteFromHash() === "pedidos" && hasPedidosData()) {
     mountPedidosDashboard();
+  }
+  if (getRouteFromHash() === "resultado" && canContinueToDashboards()) {
+    mountResultadoDashboard();
   }
 }
 
@@ -513,6 +518,79 @@ function renderPedidoFilters(pedidos) {
   `;
 }
 
+function renderResultadoFilters(pedidos, contas) {
+  const pedidoDistinct = (field) => window.MoldeFilters.getDistinctValues(pedidos, field);
+  const contaDistinct = (field) => window.MoldeFilters.getDistinctValues(contas, field);
+  const receitaBase = filterState.resultado?.receitaBase || "cadastro";
+  const pagoValue = filterState.contas.pago === true ? "true" : filterState.contas.pago === false ? "false" : "";
+  return `
+    <div class="filter-panel-grid">
+      ${renderPeriodFilterFields()}
+      <fieldset>
+        <legend>Competência</legend>
+        <label>Base da receita
+          <select data-filter-resultado-base>
+            <option value="cadastro" ${receitaBase === "cadastro" ? "selected" : ""}>Cadastro</option>
+            <option value="entrega" ${receitaBase === "entrega" ? "selected" : ""}>Entrega</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Pedidos</legend>
+        ${renderFilterDropdown("pedidos", "situacao", "Situação", pedidoDistinct("situacao_original"), filterState.pedidos.situacao)}
+        ${renderFilterDropdown("pedidos", "situacaoGrupo", "Grupo", pedidoDistinct("situacao_grupo"), filterState.pedidos.situacaoGrupo)}
+        ${renderFilterDropdown("pedidos", "vendedor", "Vendedor", pedidoDistinct("vendedor"), filterState.pedidos.vendedor)}
+        ${renderFilterDropdown("pedidos", "cliente", "Cliente", pedidoDistinct("cliente"), filterState.pedidos.cliente)}
+        ${renderFilterDropdown("pedidos", "formaEntrada", "Pagamento entrada", pedidoDistinct("forma_pagamento_entrada"), filterState.pedidos.formaEntrada)}
+        ${renderFilterDropdown("pedidos", "formaSaldo", "Pagamento saldo", pedidoDistinct("forma_pagamento_saldo"), filterState.pedidos.formaSaldo)}
+      </fieldset>
+      <fieldset>
+        <legend>Contas</legend>
+        ${renderFilterDropdown("contas", "statusPagamento", "Status", contaDistinct("status_pagamento"), filterState.contas.statusPagamento)}
+        ${renderFilterDropdown("contas", "fornecedor", "Fornecedor", contaDistinct("fornecedor"), filterState.contas.fornecedor)}
+        ${renderFilterDropdown("contas", "classificacao", "Classificação", contaDistinct("classificacao"), filterState.contas.classificacao)}
+        ${renderFilterDropdown("contas", "categoria", "Categoria", contaDistinct("categoria"), filterState.contas.categoria)}
+        ${renderFilterDropdown("contas", "conta", "Conta", contaDistinct("conta"), filterState.contas.conta)}
+        ${renderFilterDropdown("contas", "parcela", "Parcela", contaDistinct("parcela"), filterState.contas.parcela)}
+        <label>Pago
+          <select data-filter-conta-select="pago">
+            <option value="" ${pagoValue === "" ? "selected" : ""}>Todos</option>
+            <option value="true" ${pagoValue === "true" ? "selected" : ""}>Sim</option>
+            <option value="false" ${pagoValue === "false" ? "selected" : ""}>Não</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Condições pedidos</legend>
+        <div class="filter-toggle-grid">
+          ${renderPedidoToggle("comPendente", "Com valor pendente")}
+          ${renderPedidoToggle("semCliente", "Sem cliente")}
+          ${renderPedidoToggle("semDataPrevista", "Sem data prevista")}
+          ${renderPedidoToggle("entregueNoPrazo", "Entregue no prazo")}
+          ${renderPedidoToggle("atrasado", "Atrasado")}
+          ${renderPedidoToggle("cancelado", "Cancelado")}
+          ${renderPedidoToggle("aguardandoAprovacao", "Aguardando aprovação")}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Condições contas</legend>
+        <div class="filter-toggle-grid">
+          ${renderContaToggle("vencido", "Vencido")}
+          ${renderContaToggle("venceHoje", "Vence hoje")}
+          ${renderContaToggle("vence7", "Vence em 7 dias")}
+          ${renderContaToggle("vence30", "Vence em 30 dias")}
+          ${renderContaToggle("semValor", "Sem valor")}
+          ${renderContaToggle("semClassificacao", "Sem classificação")}
+          ${renderContaToggle("semConta", "Sem conta")}
+        </div>
+      </fieldset>
+    </div>
+    <div class="filter-panel-actions">
+      <button class="button button-outline" type="button" data-filter-clear>Limpar filtros</button>
+    </div>
+  `;
+}
+
 function renderFilterPanelContent(route = getRouteFromHash()) {
   if (!filterPanel) {
     return;
@@ -532,6 +610,11 @@ function renderFilterPanelContent(route = getRouteFromHash()) {
 
   if (route === "pedidos") {
     filterPanel.innerHTML = renderPedidoFilters(pedidos);
+    return;
+  }
+
+  if (route === "resultado") {
+    filterPanel.innerHTML = renderResultadoFilters(pedidos, contas);
     return;
   }
 
@@ -910,7 +993,9 @@ function scheduleExecutiveChartResize() {
           ? financeChartInstances
           : route === "pedidos"
             ? pedidosChartInstances
-            : [];
+            : route === "resultado"
+              ? resultadoChartInstances
+              : [];
     instances.forEach((instance) => {
       if (instance && typeof instance.resize === "function") {
         instance.resize();
@@ -1407,6 +1492,162 @@ function mountPedidosDashboard() {
   mountPedidosTable("pipeline", metrics.getPedidosPipeline(pedidos), "pipeline", PEDIDOS_TABLES[5].empty);
 }
 
+const RESULTADO_SECTIONS = [
+  {
+    id: "competencia",
+    eyebrow: "Visão por competência",
+    title: "Competência",
+    cards: [
+      { label: "Receita do mês", key: "receitaMes" },
+      { label: "Despesa do mês", key: "despesaMes" },
+      { label: "Resultado competência", key: "resultadoCompetencia" }
+    ],
+    charts: [
+      { id: "revenue-expense-result", title: "Receita, despesa e resultado por mês" },
+      { id: "result-waterfall", title: "Waterfall do resultado" }
+    ]
+  },
+  {
+    id: "caixa",
+    eyebrow: "Visão de caixa",
+    title: "Caixa",
+    cards: [
+      { label: "Recebido no mês", key: "recebidoMes" },
+      { label: "Despesa paga no mês", key: "despesaPagaMes" },
+      { label: "Resultado caixa", key: "resultadoCaixa" }
+    ],
+    charts: [
+      { id: "received-paid", title: "Recebido x pago" },
+      { id: "cash-projection", title: "Projeção de caixa" }
+    ]
+  },
+  {
+    id: "operacional",
+    eyebrow: "Posição operacional",
+    title: "Posição operacional",
+    cards: [
+      { label: "Contas a receber", key: "recebiveis" },
+      { label: "Contas a pagar abertas", key: "contasAbertas" },
+      { label: "Saldo operacional projetado", key: "saldoProjetado" },
+      { label: "Cobertura", key: "cobertura" },
+      { label: "Pedidos para equilíbrio", key: "pedidosEquilibrio" }
+    ],
+    charts: [
+      { id: "receivables-open", title: "Recebíveis x contas em aberto" },
+      { id: "break-even-month", title: "Ponto de equilíbrio mensal" }
+    ]
+  }
+];
+
+function renderResultadoSection(section) {
+  const cards = section.cards
+    .map((card) => renderMetricCard(card.label, { key: card.key }))
+    .join("");
+  const charts = section.charts
+    .map(
+      (panel) => `
+        <article class="chart-panel">
+          <h3 class="chart-panel-title">${escapeHTML(panel.title)}</h3>
+          <div class="chart-canvas" data-chart="${panel.id}" role="img" aria-label="${escapeHTML(panel.title)}"></div>
+        </article>
+      `
+    )
+    .join("");
+
+  return `
+    <section class="resultado-section" data-resultado-section="${section.id}">
+      <header class="resultado-section-header">
+        <span class="eyebrow">${escapeHTML(section.eyebrow)}</span>
+        <h2 class="resultado-section-title">${escapeHTML(section.title)}</h2>
+      </header>
+      <div class="metric-grid resultado-section-kpis">${cards}</div>
+      <section class="resultado-charts-grid" aria-label="Gráficos ${escapeHTML(section.title)}">
+        ${charts}
+      </section>
+    </section>
+  `;
+}
+
+function renderResultadoPage(route) {
+  if (!canContinueToDashboards()) {
+    return renderEmptyPage(route);
+  }
+
+  return `
+    <header class="page-header">
+      <div>
+        <span class="eyebrow">${route.eyebrow}</span>
+        <h1>${route.title}</h1>
+        <p>${route.description}</p>
+      </div>
+      <span class="badge badge-success">Dados carregados</span>
+    </header>
+    ${RESULTADO_SECTIONS.map(renderResultadoSection).join("")}
+  `;
+}
+
+function disposeResultadoCharts() {
+  if (window.MoldeCharts && resultadoChartInstances.length) {
+    window.MoldeCharts.disposeResultadoCharts(resultadoChartInstances);
+  }
+  resultadoChartInstances = [];
+}
+
+function mountResultadoDashboard() {
+  if (getRouteFromHash() !== "resultado" || !canContinueToDashboards() || !window.MoldeMetrics || !appState.dataset) {
+    return;
+  }
+
+  const pedidos = window.MoldeFilters.applyFilters(appState.dataset.pedidos || [], "pedidos", filterState);
+  const contas = window.MoldeFilters.applyFilters(appState.dataset.contas || [], "contas", filterState);
+  const metrics = window.MoldeMetrics;
+  const receitaBase = filterState.resultado?.receitaBase || "cadastro";
+  const kpis = metrics.computeResultadoKpis(pedidos, contas, filterState, { receitaBase });
+  const format = metrics.formatCurrency;
+
+  const metricMap = {
+    receitaMes: format(kpis.competencia.receitaMes),
+    despesaMes: format(kpis.competencia.despesaMes),
+    resultadoCompetencia: format(kpis.competencia.resultadoCompetencia),
+    recebidoMes: format(kpis.caixa.recebidoMes),
+    despesaPagaMes: format(kpis.caixa.despesaPagaMes),
+    resultadoCaixa: format(kpis.caixa.resultadoCaixa),
+    recebiveis: format(kpis.operacional.recebiveis),
+    contasAbertas: format(kpis.operacional.contasAbertas),
+    saldoProjetado: format(kpis.operacional.saldoProjetado),
+    cobertura: metrics.formatRatio(kpis.operacional.cobertura),
+    pedidosEquilibrio: metrics.formatCount(kpis.operacional.pedidosEquilibrio)
+  };
+
+  document.querySelectorAll("[data-metric]").forEach((element) => {
+    const key = element.dataset.metric;
+    if (metricMap[key] !== undefined) {
+      element.textContent = metricMap[key];
+    }
+  });
+
+  disposeResultadoCharts();
+  if (window.MoldeCharts && window.echarts) {
+    const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    const containers = {
+      revenueExpenseResult: document.querySelector('[data-chart="revenue-expense-result"]'),
+      resultWaterfall: document.querySelector('[data-chart="result-waterfall"]'),
+      receivedPaid: document.querySelector('[data-chart="received-paid"]'),
+      cashProjection: document.querySelector('[data-chart="cash-projection"]'),
+      receivablesOpen: document.querySelector('[data-chart="receivables-open"]'),
+      breakEvenMonth: document.querySelector('[data-chart="break-even-month"]')
+    };
+    resultadoChartInstances = window.MoldeCharts.renderResultadoCharts(
+      containers,
+      pedidos,
+      contas,
+      filterState,
+      { receitaBase },
+      theme
+    );
+  }
+}
+
 function renderFindingItem(finding, severityLabel, severityClass) {
   return `
     <li class="validation-finding ${severityClass}">
@@ -1896,6 +2137,15 @@ function attachGlobalInteractions() {
       onFilterStateChanged();
       return;
     }
+    const resultadoBase = event.target.closest("[data-filter-resultado-base]");
+    if (resultadoBase) {
+      if (!filterState.resultado) {
+        filterState.resultado = { receitaBase: "cadastro" };
+      }
+      filterState.resultado.receitaBase = resultadoBase.value === "entrega" ? "entrega" : "cadastro";
+      onFilterStateChanged();
+      return;
+    }
     const check = event.target.closest("[data-filter-check]");
     if (check) {
       const [group, field] = check.dataset.filterCheck.split(":");
@@ -1994,6 +2244,9 @@ function onFilterStateChanged() {
   }
   if (getRouteFromHash() === "pedidos" && hasPedidosData()) {
     mountPedidosDashboard();
+  }
+  if (getRouteFromHash() === "resultado" && canContinueToDashboards()) {
+    mountResultadoDashboard();
   }
 }
 
@@ -2104,6 +2357,7 @@ function renderCurrentRoute(options = {}) {
   disposeExecutiveCharts();
   disposeFinanceCharts();
   disposePedidosCharts();
+  disposeResultadoCharts();
   const routeName = getRouteFromHash();
   const route = routes[routeName];
   ensureValidHash(routeName);
@@ -2142,6 +2396,10 @@ function renderCurrentRoute(options = {}) {
 
   if (routeName === "pedidos" && hasPedidosData()) {
     mountPedidosDashboard();
+  }
+
+  if (routeName === "resultado" && canContinueToDashboards()) {
+    mountResultadoDashboard();
   }
 }
 

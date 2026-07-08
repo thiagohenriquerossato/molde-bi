@@ -63,8 +63,60 @@
     return formatMonthKey(row.data_cadastro, row.mes_cadastro);
   }
 
+  function monthKeyFromPedidoCompetencia(row, receitaBase) {
+    if (receitaBase === "entrega") {
+      return formatMonthKey(row.data_entregue, row.mes_entrega);
+    }
+    return monthKeyFromPedido(row);
+  }
+
   function monthKeyFromConta(row) {
     return formatMonthKey(row.data_vencimento, row.mes_vencimento);
+  }
+
+  function monthKeyFromPayment(row) {
+    return formatMonthKey(row.data_pagamento, null);
+  }
+
+  function parseFilterDate(value) {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function matchesPeriodFields(dateField, monthField, state) {
+    const date = parseFilterDate(dateField);
+    if (state.year) {
+      const year = date ? date.getFullYear() : monthField ? Number(monthField.slice(0, 4)) : null;
+      if (year !== Number(state.year)) {
+        return false;
+      }
+    }
+    if (state.month) {
+      const month = date ? date.getMonth() + 1 : monthField ? Number(monthField.slice(5, 7)) : null;
+      if (month !== Number(state.month)) {
+        return false;
+      }
+    }
+    if (state.periodFrom) {
+      const from = parseFilterDate(state.periodFrom);
+      if (from && date && date < from) {
+        return false;
+      }
+    }
+    if (state.periodTo) {
+      const to = parseFilterDate(state.periodTo);
+      if (to && date && date > to) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function hasPeriodFilter(state) {
+    return Boolean(state.year || state.month || state.periodFrom || state.periodTo);
   }
 
   function sortMonths(months) {
@@ -725,6 +777,236 @@
       .sort((a, b) => new Date(a.data_cadastro) - new Date(b.data_cadastro));
   }
 
+  function aggregateRevenueExpenseByMonthCompetencia(pedidos, contas, receitaBase) {
+    const months = new Set();
+    const receitaMap = new Map();
+    const despesaMap = new Map();
+
+    (pedidos || []).filter(isReceitaAtiva).forEach((row) => {
+      const month = monthKeyFromPedidoCompetencia(row, receitaBase);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      receitaMap.set(month, (receitaMap.get(month) || 0) + (row.valor_final || 0));
+    });
+
+    (contas || []).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      despesaMap.set(month, (despesaMap.get(month) || 0) + (row.valor || 0));
+    });
+
+    return sortMonths(months).map((month) => {
+      const receitaAtiva = receitaMap.get(month) || 0;
+      const despesas = despesaMap.get(month) || 0;
+      return { month, receitaAtiva, despesas, resultado: receitaAtiva - despesas };
+    });
+  }
+
+  function sumCashReceivedInPeriod(pedidos, filterState) {
+    return sumField(
+      (pedidos || []).filter((row) => {
+        if (isCancelado(row)) {
+          return false;
+        }
+        if (!hasPeriodFilter(filterState)) {
+          return true;
+        }
+        return matchesPeriodFields(row.data_cadastro, row.mes_cadastro, filterState);
+      }),
+      (row) => row.valor_pago
+    );
+  }
+
+  function sumCashPaidInPeriod(contas, filterState) {
+    return sumField(
+      (contas || []).filter((row) => {
+        if (!row.pago) {
+          return false;
+        }
+        if (!hasPeriodFilter(filterState)) {
+          return true;
+        }
+        return matchesPeriodFields(row.data_pagamento, monthKeyFromPayment(row), filterState);
+      }),
+      (row) => row.valor
+    );
+  }
+
+  function aggregateReceivedPaidByMonth(pedidos, contas, filterState) {
+    const months = new Set();
+    const recebidoMap = new Map();
+    const pagoMap = new Map();
+
+    (pedidos || []).filter((row) => !isCancelado(row)).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      if (hasPeriodFilter(filterState) && !matchesPeriodFields(row.data_cadastro, row.mes_cadastro, filterState)) {
+        return;
+      }
+      months.add(month);
+      recebidoMap.set(month, (recebidoMap.get(month) || 0) + (row.valor_pago || 0));
+    });
+
+    (contas || []).filter((row) => row.pago).forEach((row) => {
+      const month = monthKeyFromPayment(row);
+      if (!month) {
+        return;
+      }
+      if (hasPeriodFilter(filterState) && !matchesPeriodFields(row.data_pagamento, month, filterState)) {
+        return;
+      }
+      months.add(month);
+      pagoMap.set(month, (pagoMap.get(month) || 0) + (row.valor || 0));
+    });
+
+    return sortMonths(months).map((month) => ({
+      month,
+      recebido: recebidoMap.get(month) || 0,
+      pago: pagoMap.get(month) || 0
+    }));
+  }
+
+  function aggregateCashProjection(pedidos, contas, filterState) {
+    const flow = aggregateReceivedPaidByMonth(pedidos, contas, filterState);
+    let balance = 0;
+    return flow.map((item) => {
+      balance += item.recebido - item.pago;
+      return { month: item.month, saldo: balance, fluxo: item.recebido - item.pago };
+    });
+  }
+
+  function aggregateReceivablesOpenByMonth(pedidos, contas) {
+    const months = new Set();
+    const recebiveisMap = new Map();
+    const abertasMap = new Map();
+
+    (pedidos || []).filter((row) => !isCancelado(row)).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      recebiveisMap.set(month, (recebiveisMap.get(month) || 0) + (row.valor_pendente || 0));
+    });
+
+    (contas || []).filter((row) => !row.pago).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      abertasMap.set(month, (abertasMap.get(month) || 0) + (row.valor || 0));
+    });
+
+    return sortMonths(months).map((month) => ({
+      month,
+      recebiveis: recebiveisMap.get(month) || 0,
+      abertas: abertasMap.get(month) || 0
+    }));
+  }
+
+  function aggregateBreakEvenByMonth(pedidos, contas) {
+    const months = new Set();
+    const fixaMap = new Map();
+    const ticketMap = new Map();
+    const countMap = new Map();
+
+    (contas || []).filter(isDespesaFixa).forEach((row) => {
+      const month = monthKeyFromConta(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      fixaMap.set(month, (fixaMap.get(month) || 0) + (row.valor || 0));
+    });
+
+    (pedidos || []).filter((row) => !isCancelado(row)).forEach((row) => {
+      const month = monthKeyFromPedido(row);
+      if (!month) {
+        return;
+      }
+      months.add(month);
+      ticketMap.set(month, (ticketMap.get(month) || 0) + (row.valor_final || 0));
+      countMap.set(month, (countMap.get(month) || 0) + 1);
+    });
+
+    return sortMonths(months).map((month) => {
+      const fixa = fixaMap.get(month) || 0;
+      const count = countMap.get(month) || 0;
+      const ticket = count > 0 ? (ticketMap.get(month) || 0) / count : 0;
+      return { month, pedidosEquilibrio: ticket > 0 ? Math.ceil(fixa / ticket) : null };
+    });
+  }
+
+  function buildWaterfallTotals(pedidos, contas, receitaBase) {
+    const activeRows = (pedidos || []).filter(isReceitaAtiva);
+    const receita = sumField(activeRows, (row) => row.valor_final);
+    const despesas = sumField(contas || [], (row) => row.valor);
+    return {
+      receita,
+      despesas,
+      resultado: receita - despesas,
+      receitaBase
+    };
+  }
+
+  function computeResultadoKpis(pedidos, contas, filterState, options = {}) {
+    const receitaBase = options.receitaBase || "cadastro";
+    const pedidoRows = pedidos || [];
+    const contaRows = contas || [];
+    const activeRows = pedidoRows.filter(isReceitaAtiva);
+    const nonCancelled = pedidoRows.filter((row) => !isCancelado(row));
+
+    const receitaMes = sumField(activeRows, (row) => row.valor_final);
+    const despesaMes = sumField(contaRows, (row) => row.valor);
+    const resultadoCompetencia = receitaMes - despesaMes;
+
+    const recebidoMes = sumCashReceivedInPeriod(pedidoRows, filterState || {});
+    const despesaPagaMes = sumCashPaidInPeriod(contaRows, filterState || {});
+    const resultadoCaixa = recebidoMes - despesaPagaMes;
+
+    const recebiveis = sumField(nonCancelled, (row) => row.valor_pendente);
+    const contasAbertas = sumField(
+      contaRows.filter((row) => !row.pago),
+      (row) => row.valor
+    );
+    const saldoProjetado = recebiveis - contasAbertas;
+    const cobertura = contasAbertas > 0 ? recebiveis / contasAbertas : null;
+
+    const despesasFixas = sumField(contaRows.filter(isDespesaFixa), (row) => row.valor);
+    const pedidosCount = nonCancelled.length;
+    const ticketMedio = pedidosCount > 0 ? sumField(nonCancelled, (row) => row.valor_final) / pedidosCount : 0;
+    const pedidosEquilibrio = ticketMedio > 0 ? Math.ceil(despesasFixas / ticketMedio) : null;
+
+    return {
+      competencia: { receitaMes, despesaMes, resultadoCompetencia },
+      caixa: { recebidoMes, despesaPagaMes, resultadoCaixa },
+      operacional: { recebiveis, contasAbertas, saldoProjetado, cobertura, pedidosEquilibrio },
+      receitaBase
+    };
+  }
+
+  function formatRatio(value) {
+    if (!Number.isFinite(value)) {
+      return "—";
+    }
+    return `${value.toFixed(2).replace(".", ",")}×`;
+  }
+
+  function formatCount(value) {
+    if (!Number.isFinite(value)) {
+      return "—";
+    }
+    return String(Math.round(value));
+  }
+
   function formatPercent(value) {
     if (!Number.isFinite(value)) {
       return "—";
@@ -787,6 +1069,17 @@
     getPedidosSemDataPrevista,
     getPedidosDescontoAlto,
     getPedidosPipeline,
+    aggregateRevenueExpenseByMonthCompetencia,
+    sumCashReceivedInPeriod,
+    sumCashPaidInPeriod,
+    aggregateReceivedPaidByMonth,
+    aggregateCashProjection,
+    aggregateReceivablesOpenByMonth,
+    aggregateBreakEvenByMonth,
+    buildWaterfallTotals,
+    computeResultadoKpis,
+    formatRatio,
+    formatCount,
     formatPercent,
     formatCurrency
   };

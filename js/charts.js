@@ -542,6 +542,147 @@
     disposeInstances(instances);
   }
 
+  function renderResultadoCharts(containers, pedidos, contas, filterState, options, theme) {
+    const metrics = window.MoldeMetrics;
+    if (!metrics || !containers) {
+      return [];
+    }
+
+    const colors = getChartColors();
+    const warningColor = getWarningColor();
+    const receitaBase = options?.receitaBase || "cadastro";
+    const instances = [];
+
+    const push = (element, option) => {
+      const instance = initChart(element, option, theme);
+      if (instance) {
+        instances.push(instance);
+      }
+    };
+
+    const revenueExpense = metrics.aggregateRevenueExpenseByMonthCompetencia(pedidos, contas, receitaBase);
+    if (containers.revenueExpenseResult) {
+      push(
+        containers.revenueExpenseResult,
+        {
+          aria: { enabled: true },
+          animationDuration: 300,
+          color: colors,
+          grid: { left: 48, right: 16, top: 32, bottom: 32 },
+          tooltip: baseTooltip(),
+          legend: { data: ["Receita ativa", "Despesas", "Resultado"] },
+          xAxis: { type: "category", data: revenueExpense.map((item) => formatMonthLabel(item.month)) },
+          yAxis: { type: "value" },
+          series: [
+            { name: "Receita ativa", type: "bar", data: revenueExpense.map((item) => item.receitaAtiva) },
+            { name: "Despesas", type: "bar", data: revenueExpense.map((item) => item.despesas) },
+            { name: "Resultado", type: "line", data: revenueExpense.map((item) => item.resultado) }
+          ]
+        }
+      );
+    }
+
+    const waterfall = metrics.buildWaterfallTotals(pedidos, contas, receitaBase);
+    if (containers.resultWaterfall) {
+      push(containers.resultWaterfall, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[1], warningColor, colors[0]],
+        grid: { left: 48, right: 16, top: 32, bottom: 32 },
+        tooltip: baseTooltip(),
+        xAxis: { type: "category", data: ["Receita", "Despesas", "Resultado"] },
+        yAxis: { type: "value" },
+        series: [
+          {
+            type: "bar",
+            data: [
+              { value: waterfall.receita, itemStyle: { color: colors[1] } },
+              { value: -waterfall.despesas, itemStyle: { color: warningColor } },
+              { value: waterfall.resultado, itemStyle: { color: colors[0] } }
+            ],
+            label: { show: true, position: "top", formatter: (params) => formatBrl(Math.abs(params.value)) }
+          }
+        ]
+      });
+    }
+
+    const receivedPaid = metrics.aggregateReceivedPaidByMonth(pedidos, contas, filterState || {});
+    if (containers.receivedPaid) {
+      push(containers.receivedPaid, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: colors,
+        grid: { left: 48, right: 16, top: 32, bottom: 32 },
+        tooltip: baseTooltip(),
+        legend: { data: ["Recebido", "Pago"] },
+        xAxis: { type: "category", data: receivedPaid.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value" },
+        series: [
+          { name: "Recebido", type: "line", data: receivedPaid.map((item) => item.recebido) },
+          { name: "Pago", type: "line", data: receivedPaid.map((item) => item.pago) }
+        ]
+      });
+    }
+
+    const projection = metrics.aggregateCashProjection(pedidos, contas, filterState || {});
+    if (containers.cashProjection) {
+      push(containers.cashProjection, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[2]],
+        grid: { left: 48, right: 16, top: 32, bottom: 32 },
+        tooltip: baseTooltip(),
+        xAxis: { type: "category", data: projection.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value" },
+        series: [{ name: "Saldo acumulado", type: "line", areaStyle: {}, data: projection.map((item) => item.saldo) }]
+      });
+    }
+
+    const receivablesOpen = metrics.aggregateReceivablesOpenByMonth(pedidos, contas);
+    if (containers.receivablesOpen) {
+      push(containers.receivablesOpen, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: colors,
+        grid: { left: 48, right: 16, top: 32, bottom: 32 },
+        tooltip: baseTooltip(),
+        legend: { data: ["Recebíveis", "Contas abertas"] },
+        xAxis: { type: "category", data: receivablesOpen.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value" },
+        series: [
+          { name: "Recebíveis", type: "bar", data: receivablesOpen.map((item) => item.recebiveis) },
+          { name: "Contas abertas", type: "bar", data: receivablesOpen.map((item) => item.abertas) }
+        ]
+      });
+    }
+
+    const breakEven = metrics.aggregateBreakEvenByMonth(pedidos, contas);
+    if (containers.breakEvenMonth) {
+      push(containers.breakEvenMonth, {
+        aria: { enabled: true },
+        animationDuration: 300,
+        color: [colors[4]],
+        grid: { left: 48, right: 16, top: 32, bottom: 32 },
+        tooltip: { trigger: "axis", valueFormatter: (value) => (Number.isFinite(value) ? `${value} pedidos` : "—") },
+        xAxis: { type: "category", data: breakEven.map((item) => formatMonthLabel(item.month)) },
+        yAxis: { type: "value", minInterval: 1 },
+        series: [
+          {
+            name: "Pedidos para equilíbrio",
+            type: "line",
+            data: breakEven.map((item) => item.pedidosEquilibrio)
+          }
+        ]
+      });
+    }
+
+    return instances.filter(Boolean);
+  }
+
+  function disposeResultadoCharts(instances) {
+    disposeInstances(instances);
+  }
+
   window.MoldeCharts = {
     getChartColors,
     renderExecutiveCharts,
@@ -549,6 +690,8 @@
     renderFinanceCharts,
     disposeFinanceCharts,
     renderPedidosCharts,
-    disposePedidosCharts
+    disposePedidosCharts,
+    renderResultadoCharts,
+    disposeResultadoCharts
   };
 })();

@@ -38,6 +38,9 @@
         semValor: false,
         semClassificacao: false,
         semConta: false
+      },
+      resultado: {
+        receitaBase: "cadastro"
       }
     };
   }

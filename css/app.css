@@ -1165,6 +1165,31 @@ input:disabled,
   margin-bottom: var(--space-6);
 }
 
+.resultado-section {
+  margin-bottom: var(--space-8);
+}
+
+.resultado-section-header {
+  margin-bottom: var(--space-4);
+}
+
+.resultado-section-title {
+  margin: var(--space-1) 0 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.resultado-section-kpis {
+  margin-bottom: var(--space-4);
+}
+
+.resultado-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
 .metric-card-value--name {
   font-size: 1.125rem;
   white-space: nowrap;
@@ -1216,7 +1241,8 @@ input:disabled,
   .finance-charts-grid,
   .finance-tables-grid,
   .pedidos-charts-grid,
-  .pedidos-tables-grid {
+  .pedidos-tables-grid,
+  .resultado-charts-grid {
     grid-template-columns: 1fr;
   }
 }

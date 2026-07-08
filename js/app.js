@@ -299,6 +299,78 @@ function renderFilterChips() {
     .join("");
 }
 
+function getFilterSummaryText(selected) {
+  if (!selected.length) {
+    return "Todos";
+  }
+  if (selected.length === 1) {
+    return selected[0];
+  }
+  return `${selected.length} selecionados`;
+}
+
+function renderFilterDropdown(group, field, label, values, selected) {
+  const options = values
+    .map((value) => {
+      const checked = selected.includes(value) ? "checked" : "";
+      return `
+        <label class="filter-dropdown-option">
+          <input type="checkbox" data-filter-check="${group}:${field}" value="${escapeHTML(value)}" ${checked}>
+          <span>${escapeHTML(value)}</span>
+        </label>
+      `;
+    })
+    .join("");
+  const hasSelection = selected.length > 0;
+
+  return `
+    <div class="filter-field">
+      <span class="filter-field-label">${label}</span>
+      <div class="filter-dropdown" data-filter-dropdown="${group}:${field}">
+        <button type="button" class="filter-dropdown-toggle ${hasSelection ? "is-active" : ""}" data-filter-dropdown-toggle aria-haspopup="true" aria-expanded="false">
+          <span class="filter-dropdown-summary">${escapeHTML(getFilterSummaryText(selected))}</span>
+          <span class="filter-dropdown-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="filter-dropdown-menu" hidden>
+          <input type="search" class="filter-dropdown-search" data-filter-dropdown-search placeholder="Buscar ${escapeHTML(label.toLowerCase())}...">
+          <div class="filter-dropdown-options">
+            ${options || `<p class="filter-dropdown-empty">Sem valores</p>`}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function closeAllFilterDropdowns() {
+  if (!filterPanel) {
+    return;
+  }
+  filterPanel.querySelectorAll(".filter-dropdown-menu").forEach((menu) => {
+    menu.hidden = true;
+  });
+  filterPanel.querySelectorAll("[data-filter-dropdown-toggle]").forEach((toggle) => {
+    toggle.setAttribute("aria-expanded", "false");
+  });
+}
+
+function updateFilterDropdownSummary(checkbox) {
+  const dropdown = checkbox.closest("[data-filter-dropdown]");
+  if (!dropdown) {
+    return;
+  }
+  const [group, field] = dropdown.dataset.filterDropdown.split(":");
+  const selected = filterState[group]?.[field] || [];
+  const summaryEl = dropdown.querySelector(".filter-dropdown-summary");
+  const toggle = dropdown.querySelector(".filter-dropdown-toggle");
+  if (summaryEl) {
+    summaryEl.textContent = getFilterSummaryText(selected);
+  }
+  if (toggle) {
+    toggle.classList.toggle("is-active", selected.length > 0);
+  }
+}
+
 function renderFilterPanelContent() {
   if (!filterPanel) {
     return;
@@ -311,21 +383,6 @@ function renderFilterPanelContent() {
   const pedidos = appState.dataset?.pedidos || [];
   const contas = appState.dataset?.contas || [];
 
-  const renderMulti = (id, label, values, selected, group) => {
-    const options = values
-      .map((value) => {
-        const isSelected = selected.includes(value);
-        return `<option value="${escapeHTML(value)}" ${isSelected ? "selected" : ""}>${escapeHTML(value)}</option>`;
-      })
-      .join("");
-    return `
-      <label>
-        ${label}
-        <select multiple data-filter-multi="${group}:${id}" size="4">${options}</select>
-      </label>
-    `;
-  };
-
   filterPanel.innerHTML = `
     <div class="filter-panel-grid">
       <label>Ano<input type="number" data-filter-field="year" value="${filterState.year ?? ""}" min="2020" max="2035"></label>
@@ -334,15 +391,15 @@ function renderFilterPanelContent() {
       <label>Valor máximo<input type="number" step="0.01" data-filter-field="valueMax" value="${filterState.valueMax ?? ""}"></label>
       <fieldset>
         <legend>Pedidos</legend>
-        ${renderMulti("situacaoGrupo", "Grupo", window.MoldeFilters.getDistinctValues(pedidos, "situacao_grupo"), filterState.pedidos.situacaoGrupo, "pedidos")}
-        ${renderMulti("vendedor", "Vendedor", window.MoldeFilters.getDistinctValues(pedidos, "vendedor"), filterState.pedidos.vendedor, "pedidos")}
-        ${renderMulti("cliente", "Cliente", window.MoldeFilters.getDistinctValues(pedidos, "cliente"), filterState.pedidos.cliente, "pedidos")}
+        ${renderFilterDropdown("pedidos", "situacaoGrupo", "Grupo", window.MoldeFilters.getDistinctValues(pedidos, "situacao_grupo"), filterState.pedidos.situacaoGrupo)}
+        ${renderFilterDropdown("pedidos", "vendedor", "Vendedor", window.MoldeFilters.getDistinctValues(pedidos, "vendedor"), filterState.pedidos.vendedor)}
+        ${renderFilterDropdown("pedidos", "cliente", "Cliente", window.MoldeFilters.getDistinctValues(pedidos, "cliente"), filterState.pedidos.cliente)}
       </fieldset>
       <fieldset>
         <legend>Contas</legend>
-        ${renderMulti("statusPagamento", "Status", window.MoldeFilters.getDistinctValues(contas, "status_pagamento"), filterState.contas.statusPagamento, "contas")}
-        ${renderMulti("fornecedor", "Fornecedor", window.MoldeFilters.getDistinctValues(contas, "fornecedor"), filterState.contas.fornecedor, "contas")}
-        ${renderMulti("categoria", "Categoria", window.MoldeFilters.getDistinctValues(contas, "categoria"), filterState.contas.categoria, "contas")}
+        ${renderFilterDropdown("contas", "statusPagamento", "Status", window.MoldeFilters.getDistinctValues(contas, "status_pagamento"), filterState.contas.statusPagamento)}
+        ${renderFilterDropdown("contas", "fornecedor", "Fornecedor", window.MoldeFilters.getDistinctValues(contas, "fornecedor"), filterState.contas.fornecedor)}
+        ${renderFilterDropdown("contas", "categoria", "Categoria", window.MoldeFilters.getDistinctValues(contas, "categoria"), filterState.contas.categoria)}
       </fieldset>
     </div>
     <div class="filter-panel-actions">
@@ -956,10 +1013,17 @@ function attachGlobalInteractions() {
   });
 
   filterPanel?.addEventListener("change", (event) => {
-    const multi = event.target.closest("[data-filter-multi]");
-    if (multi) {
-      const [group, field] = multi.dataset.filterMulti.split(":");
-      filterState[group][field] = Array.from(multi.selectedOptions).map((option) => option.value);
+    const check = event.target.closest("[data-filter-check]");
+    if (check) {
+      const [group, field] = check.dataset.filterCheck.split(":");
+      const selected = new Set(filterState[group][field]);
+      if (check.checked) {
+        selected.add(check.value);
+      } else {
+        selected.delete(check.value);
+      }
+      filterState[group][field] = Array.from(selected);
+      updateFilterDropdownSummary(check);
       onFilterStateChanged();
       return;
     }
@@ -972,11 +1036,42 @@ function attachGlobalInteractions() {
     }
   });
 
+  filterPanel?.addEventListener("input", (event) => {
+    const search = event.target.closest("[data-filter-dropdown-search]");
+    if (!search) {
+      return;
+    }
+    const term = search.value.trim().toLowerCase();
+    const menu = search.closest(".filter-dropdown-menu");
+    menu?.querySelectorAll(".filter-dropdown-option").forEach((option) => {
+      const label = option.textContent.trim().toLowerCase();
+      option.style.display = label.includes(term) ? "" : "none";
+    });
+  });
+
   filterPanel?.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-filter-dropdown-toggle]");
+    if (toggle) {
+      const menu = toggle.nextElementSibling;
+      const willOpen = menu.hidden;
+      closeAllFilterDropdowns();
+      if (willOpen) {
+        menu.hidden = false;
+        toggle.setAttribute("aria-expanded", "true");
+        menu.querySelector("[data-filter-dropdown-search]")?.focus();
+      }
+      return;
+    }
     if (event.target.closest("[data-filter-clear]")) {
       filterState = window.MoldeFilters.clearAll();
       onFilterStateChanged();
       renderFilterPanelContent();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".filter-dropdown")) {
+      closeAllFilterDropdowns();
     }
   });
 
